@@ -3,7 +3,8 @@ project(tinyhttpd C)
 
 set(CMAKE_C_STANDARD 11)
 
-add_executable(tinyhttpd src/server.c src/util.c)
+aux_source_directory(src SRC_FILES)
+add_executable(tinyhttpd ${SRC_FILES})
 target_include_directories(tinyhttpd PRIVATE include)
 
 add_executable(example_client client/example_client.c)

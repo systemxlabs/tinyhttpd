@@ -9,10 +9,11 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <arpa/inet.h>
+#include <string.h>
 #include "tinyhttpd.h"
 
 int main() {
-    // TODO 重构成读取配置文件
+    // TODO 重构成读取配置文件端口号
     int server_sockfd = server_start(8888);
     while (1) {
         int client_sockfd = accept_conn(server_sockfd);
@@ -65,28 +66,51 @@ int accept_conn(int server_sockfd) {
 
 int handle_conn(void *client_sockfd_ptr) {
     int client_sockfd = (int) (intptr_t) client_sockfd_ptr;
-    printf("Thread %d handling connection ...\n", (int) pthread_self());
+    printf("Thread %d handling connection %d ...\n", (int) pthread_self(), client_sockfd);
     // 解析请求
-    struct http_request_t request;
-    // 读取请求
-    char buf[1024];
-    ssize_t n = recv(client_sockfd, buf, sizeof(buf), 0);
-    if (n < 0) {
-        perror("recv failed.\n");
-        exit(1);
-    }
-    buf[n] = '\0'; // 字符串结束符
-    printf("request: %s\n", buf);
+    struct http_request_t *request = parse_request(client_sockfd);
+    printf("Thread %d parsed request: %s %s\n", (int) pthread_self(), request->method, request->path);
+
+    // 分发请求进行处理
+    struct http_response_t *response = process_request(request);
+    printf("Thread %d return response: %d %s %s\n", (int) pthread_self(), response->status_code, response->status_text, response->body);
 
     // 返回响应
-    char response[1024] = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<h1>Hello World!</h1>";
-    if (send(client_sockfd, response, sizeof(response), 0) < 0) {
-        perror("send failed.\n");
-        exit(1);
-    }
-    printf("send response: %s\n", response);
+    send_response(client_sockfd, response);
+
     close(client_sockfd);
     return 0;
+}
+
+struct http_response_t *process_request(struct http_request_t *request) {
+    // TODO
+    printf("Thread %d process request: %s %s\n", (int) pthread_self(), request->method, request->path);
+    if (is_static_request(request)) {
+        printf("Thread %d is static request\n", (int) pthread_self());
+        return execute_file(request);
+    }
+
+    // TODO 可配置
+    bool cgi_on = true;
+    if (cgi_on) {
+        printf("Thread %d is cgi request\n", (int) pthread_self());
+        return execute_cgi(request);
+    }
+    bool fcgi_on = true;
+    if (fcgi_on) {
+        printf("Thread %d is fcgi request\n", (int) pthread_self());
+        return execute_fcgi(request);
+    }
+    return NULL;
+}
+
+void send_response(int client_sockfd, struct http_response_t *response) {
+    // TODO
+    char *response_header = "HTTP/1.1 200 OK\r\n";
+    if (send(client_sockfd, response_header, sizeof(response_header), 0) < 0) {
+        perror("send response failed.\n");
+        exit(1);
+    }
 }
 
 void server_stop(int sockfd) {

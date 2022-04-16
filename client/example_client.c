@@ -38,7 +38,7 @@ int main() {
 
     // 4. 读取服务器响应
     char buf[1024] = {0};
-    if (read(sockfd, buf, sizeof(buf)) < 0) {
+    if (recv(sockfd, buf, sizeof(buf), 0) < 0) {
         perror("recv failed");
         return 1;
     }
