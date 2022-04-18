@@ -8,6 +8,15 @@
 #include <string.h>
 #include <unistd.h>
 
+void send_request_return_200(int sockfd) {
+}
+void send_request_return_404(int sockfd) {
+}
+void send_request_return_501(int sockfd) {
+}
+
+
+
 int main() {
     // 1. 创建套接字
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -28,13 +37,24 @@ int main() {
     }
 
     // 3. 发送数据
-    char sendbuf[1024] = "Hello, I am client\n";
-    size_t n = send(sockfd, sendbuf, strlen(sendbuf), 0);
+    char raw_request[1024] = "GET /index.html HTTP/1.1\r\n"
+                        "Host: localhost:8080\r\n"
+                        "Connection: keep-alive\r\n"
+                        "Upgrade-Insecure-Requests: 1\r\n"
+                        "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n"
+                        "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_3) AppleWebKit/604.5.6 (KHTML, like Gecko) Version/11.0.3 Safari/604.5.6\r\n"
+                        "Accept-Language: en-us\r\n"
+                        "DNT: 1\r\n"
+                        "Accept-Encoding: gzip, deflate\r\n"
+                        "\r\n"
+                        "Usually GET requests don\'t have a body\r\n"
+                        "But I don\'t care in this case :)";
+    size_t n = send(sockfd, raw_request, strlen(raw_request), 0);
     if (n < 0) {
         perror("send failed");
         return 1;
     }
-    printf("send data: %s\n", sendbuf);
+    printf("send data: %s\n", raw_request);
 
     // 4. 读取服务器响应
     char buf[1024] = {0};

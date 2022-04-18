@@ -67,13 +67,30 @@ int accept_conn(int server_sockfd) {
 int handle_conn(void *client_sockfd_ptr) {
     int client_sockfd = (int) (intptr_t) client_sockfd_ptr;
     printf("Thread %d handling connection %d ...\n", (int) pthread_self(), client_sockfd);
-    // 解析请求
-    struct http_request_t *request = parse_request(client_sockfd);
-    printf("Thread %d parsed request: %s %s\n", (int) pthread_self(), request->method, request->path);
 
-    // 分发请求进行处理
+    // 1. 读取请求
+    char raw_request[1024];
+    if (recv(client_sockfd, raw_request, sizeof(raw_request), 0) < 0) {
+        perror("recv raw_request failed.\n");
+        exit(1);
+    }
+    printf("Thread %d received request: %s\n", (int) pthread_self(), raw_request);
+
+    // 解析请求
+    struct http_request_t *request = parse_request(raw_request);
+    printf("Thread %d parsed request: %s %s %s\n", (int) pthread_self(), request->method, request->path, request->body);
+
+    // 验证请求
+    struct http_response_t *error_response = validate_request(request);
+    if (error_response != NULL) {
+        send_response(client_sockfd, error_response);
+        close(client_sockfd);
+        return 0;
+    }
+
+    // 处理请求
     struct http_response_t *response = process_request(request);
-    printf("Thread %d return response: %d %s %s\n", (int) pthread_self(), response->status_code, response->status_text, response->body);
+    printf("Thread %d return response: %d %s\n", (int) pthread_self(), response->status_code, response->status_text);
 
     // 返回响应
     send_response(client_sockfd, response);
@@ -105,9 +122,8 @@ struct http_response_t *process_request(struct http_request_t *request) {
 }
 
 void send_response(int client_sockfd, struct http_response_t *response) {
-    // TODO
-    char *response_header = "HTTP/1.1 200 OK\r\n";
-    if (send(client_sockfd, response_header, sizeof(response_header), 0) < 0) {
+    char *raw_response = generate_raw_response(response);
+    if (send(client_sockfd, raw_response, strlen(raw_response), 0) < 0) {  // 需要用strlen，sizeof返回的是指针大小，即char *
         perror("send response failed.\n");
         exit(1);
     }

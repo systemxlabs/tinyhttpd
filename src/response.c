@@ -4,6 +4,49 @@
 
 #include "tinyhttpd.h"
 
+char *generate_raw_response(struct http_response_t *response) {
+    char raw_response[1024];
+    memset(raw_response, 0, sizeof(raw_response));
+
+    // 响应状态行
+    strcat(raw_response, response->version);
+    strcat(raw_response, " ");
+    char status_code[10];
+    sprintf(status_code, "%d ", response->status_code);
+    strcat(raw_response, status_code);
+    strcat(raw_response, response->status_text);
+    strcat(raw_response, "\r\n");
+
+    // 响应头Cookie
+    if (response->cookie != NULL) {
+        strcat(raw_response, "Set-Cookie: ");
+        strcat(raw_response, response->cookie);
+        strcat(raw_response, "\r\n");
+    }
+
+    // 响应头Content-Type
+    if (response->content_type != NULL) {
+        strcat(raw_response, "Content-Type: ");
+        strcat(raw_response, response->content_type);
+        strcat(raw_response, "\r\n");
+    }
+
+    // 响应头Content-Length
+    strcat(raw_response, "Content-Length: ");
+    char content_length[10];
+    sprintf(content_length, "%d", response->content_length);
+    strcat(raw_response, content_length);
+    strcat(raw_response, "\r\n");
+
+    // 空行
+    strcat(raw_response, "\r\n");
+
+    // 响应体
+    strcat(raw_response, response->body);
+
+    return strdup(raw_response);
+}
+
 struct http_response_t *build_response_501() {
     // TODO
 }
