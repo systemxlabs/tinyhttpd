@@ -88,6 +88,12 @@ bool is_static_request(struct http_request_t *request) {
 }
 
 struct http_response_t *validate_request(struct http_request_t *request) {
-    // TODO 验证请求
+    if (strcasecmp(request->method, HTTP_GET) != 0
+            && strcasecmp(request->method, HTTP_POST) != 0) {
+        return build_response_501();
+    }
+    if (strcasecmp(request->version, HTTP_VERSION_11) != 0) {
+        return build_response_505();
+    }
     return NULL;
 }

@@ -47,13 +47,9 @@ char *generate_raw_response(struct http_response_t *response) {
     return strdup(raw_response);
 }
 
-struct http_response_t *build_response_501() {
-    // TODO
-}
-
 struct http_response_t *build_response_404() {
     struct http_response_t *response = (struct http_response_t *) malloc(sizeof(struct http_response_t));
-    response->version = "HTTP/1.1";
+    response->version = HTTP_VERSION_11;
     response->status_code = 404;
     response->status_text = "Not Found";
     response->content_type = "text/html";
@@ -62,5 +58,21 @@ struct http_response_t *build_response_404() {
     char *response_404_html = "<html><head><title>404 Not Found</title></head><body><h1>404 Not Found</h1></body></html>";
     response->content_length = strlen(response_404_html);
     response->body = response_404_html;
+    return response;
+}
+
+struct http_response_t *build_response_501() {
+    struct http_response_t *response = (struct http_response_t *) malloc(sizeof(struct http_response_t));
+    response->version = HTTP_VERSION_11;
+    response->status_code = 501;
+    response->status_text = "Not Implemented";
+    return response;
+}
+
+struct http_response_t *build_response_505() {
+    struct http_response_t *response = (struct http_response_t *) malloc(sizeof(struct http_response_t));
+    response->version = HTTP_VERSION_11;
+    response->status_code = 505;
+    response->status_text = "HTTP Version Not Supported";
     return response;
 }

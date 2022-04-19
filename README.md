@@ -6,14 +6,25 @@ C 语言实现简单的 HTTP 服务器。
 - https://github.com/AngryHacker/articles/blob/master/src/code_reading/tinyhttpd.md
 
 实现功能
-- [] xxx
-- [] xxx
-- [] epoll 改造？
-- [] 支持FastCGI
+- [ ] 支持静态html文件请求
+- [ ] 支持CGI
+- [ ] server配置化
+- [ ] epoll 改造
+- [ ] 支持FastCGI
+- [ ] 优雅关闭
 
-## 开始
+## 项目结构
+
+## 开始运行
 
 ## 执行过程
+
+## 利用python server体验CGI脚本
+1. 项目根目录下执行 `python3 -m http.server --bind localhost --cgi 8000`
+2. 项目根目录下创建 cgi-bin 子目录 `mkdir cgi-bin`
+3. 在 cgi-bin 目录下编写 CGI 脚本 `cd cgi-bin && touch hello-cgi.py`
+4. 在浏览器打开 `http://localhost:8000/cgi-bin/hello-cgi.py`
+
 
 ## FAQ
 **1.CGI是什么？FastCGI又是什么？**
@@ -29,3 +40,5 @@ C 语言实现简单的 HTTP 服务器。
 **4. 如何识别请求是动态请求还是静态请求？**
 
 通过path后缀来识别请求类型，如果是静态请求，则直接返回静态资源，如果是动态请求，则调用cgi程序，并将cgi程序的输出作为返回结果。
+
+**5. 如果整个请求是一段段发送的，如何处理？**

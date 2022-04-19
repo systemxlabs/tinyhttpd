@@ -29,13 +29,15 @@ int main() {
 
 int server_start(int port) {
     printf("Server starting on port %d ...\n", port);
-    // 1. 创建套接字
+
+    // 创建套接字
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
         perror("create socket failed.\n");
         exit(1);
     }
-    // 2. 绑定端口
+
+    // 绑定端口
     struct sockaddr_in server_addr;
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(port);
@@ -44,7 +46,8 @@ int server_start(int port) {
         perror("server bind failed.\n");
         exit(1);
     }
-    // 3. 监听
+
+    // 监听端口
     if (listen(sockfd, 20) < 0) {
         perror("server listen failed.\n");
         exit(1);
@@ -68,7 +71,7 @@ int handle_conn(void *client_sockfd_ptr) {
     int client_sockfd = (int) (intptr_t) client_sockfd_ptr;
     printf("Thread %d handling connection %d ...\n", (int) pthread_self(), client_sockfd);
 
-    // 1. 读取请求
+    // 读取请求
     char raw_request[1024];
     if (recv(client_sockfd, raw_request, sizeof(raw_request), 0) < 0) {
         perror("recv raw_request failed.\n");

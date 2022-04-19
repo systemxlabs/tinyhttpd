@@ -11,6 +11,8 @@
 #include <string.h>
 #include <sys/socket.h>
 
+#define HTTP_VERSION_11 "HTTP/1.1"
+
 #define HTTP_GET "GET"
 #define HTTP_POST "POST"
 
@@ -72,10 +74,12 @@ bool is_static_request(struct http_request_t *request);
  ***************************/
 // 生成response字符串
 char *generate_raw_response(struct http_response_t *response);
-// 构造501响应
+// 构造501 Not Implemented响应
 struct http_response_t *build_response_501();
-// 构造404响应
+// 构造404 Not Found响应
 struct http_response_t *build_response_404();
+// 构造505 HTTP Version not supported响应
+struct http_response_t *build_response_505();
 
 
 /****************************

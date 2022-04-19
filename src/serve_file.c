@@ -16,7 +16,7 @@ struct http_response_t *execute_file(struct http_request_t *request) {
         return build_response_404();
     }
     struct http_response_t *response = (struct http_response_t *)malloc(sizeof(struct http_response_t));
-    response->version = "HTTP/1.1";
+    response->version = HTTP_VERSION_11;
     response->status_code = 200;
     response->status_text = "OK";
     response->content_type = "text/html";
