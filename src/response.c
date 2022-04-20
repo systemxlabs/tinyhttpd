@@ -47,6 +47,12 @@ char *generate_raw_response(struct http_response_t *response) {
     return strdup(raw_response);
 }
 
+struct http_response_t *build_raw_response(char *raw_response) {
+    struct http_response_t *response = (struct http_response_t *) malloc(sizeof(struct http_response_t));
+    response->raw_response = strdup(raw_response);
+    return response;
+}
+
 struct http_response_t *build_response_404() {
     struct http_response_t *response = (struct http_response_t *) malloc(sizeof(struct http_response_t));
     response->version = HTTP_VERSION_11;
@@ -58,6 +64,14 @@ struct http_response_t *build_response_404() {
     char *response_404_html = "<html><head><title>404 Not Found</title></head><body><h1>404 Not Found</h1></body></html>";
     response->content_length = strlen(response_404_html);
     response->body = response_404_html;
+    return response;
+}
+
+struct http_response_t *build_response_500() {
+    struct http_response_t *response = (struct http_response_t *) malloc(sizeof(struct http_response_t));
+    response->version = HTTP_VERSION_11;
+    response->status_code = 500;
+    response->status_text = "Internal Server Error";
     return response;
 }
 

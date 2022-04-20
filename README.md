@@ -6,9 +6,11 @@ C 语言实现简单的 HTTP 服务器。
 - https://github.com/AngryHacker/articles/blob/master/src/code_reading/tinyhttpd.md
 
 实现功能
-- [ ] 支持静态html文件请求
-- [ ] 支持CGI
+- [x] 支持静态请求
+- [x] 支持CGI
+- [x] 支持多线程
 - [ ] server配置化
+- [ ] 支持自定义404等页面
 - [ ] epoll 改造
 - [ ] 支持FastCGI
 - [ ] 优雅关闭
@@ -18,6 +20,9 @@ C 语言实现简单的 HTTP 服务器。
 ## 开始运行
 
 ## 执行过程
+
+注意事项
+1. cgi脚本需要赋予执行权限 `chmod +x xxx.py`
 
 ## 利用python server体验CGI脚本
 1. 项目根目录下执行 `python3 -m http.server --bind localhost --cgi 8000`
@@ -33,7 +38,7 @@ C 语言实现简单的 HTTP 服务器。
 但是Web服务器并不能够直接运行动态脚本，为了解决Web服务器与外部应用程序（CGI程序）之间数据互通，于是出现了CGI（Common Gateway Interface）通用网关接口。
 简单理解，可以认为CGI是Web服务器和运行其上的应用程序进行“交流”的一种约定。
 
-**2. Socket是什么？**
+**2. Socket是什么？和Unix Domain Socket什么区别？**
 
 **3. Java实现的WEB应用是如何跟httpd配合工作的？**
 

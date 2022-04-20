@@ -10,6 +10,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <unistd.h>
+
+#define STDIN_FILENO    0       /* Standard input.  */
+#define STDOUT_FILENO   1       /* Standard output.  */
+#define STDERR_FILENO   2       /* Standard error output.  */
 
 #define HTTP_VERSION_11 "HTTP/1.1"
 
@@ -36,8 +41,9 @@ struct http_response_t {
     char *status_text;       // http状态码描述
     char *cookie;            // 响应的cookie
     char *content_type;      // 响应的content_type
-    int content_length;     // 响应的content_length
+    int content_length;      // 响应的content_length
     char *body;              // 响应体
+    char *raw_response;      // 原始响应
 };
 
 
@@ -74,10 +80,14 @@ bool is_static_request(struct http_request_t *request);
  ***************************/
 // 生成response字符串
 char *generate_raw_response(struct http_response_t *response);
-// 构造501 Not Implemented响应
-struct http_response_t *build_response_501();
+// 构造只含原始响应数据的response
+struct http_response_t *build_raw_response(char *raw_response);
 // 构造404 Not Found响应
 struct http_response_t *build_response_404();
+// 构造500 Internal Server Error响应
+struct http_response_t *build_response_500();
+// 构造501 Not Implemented响应
+struct http_response_t *build_response_501();
 // 构造505 HTTP Version not supported响应
 struct http_response_t *build_response_505();
 
@@ -89,8 +99,18 @@ struct http_response_t *build_response_505();
 struct http_response_t *execute_file(struct http_request_t *request);
 
 
+/****************************
+ * serve_cgi.c
+ ***************************/
 // 处理CGI动态请求
 struct http_response_t *execute_cgi(struct http_request_t *request);
+// 执行Python CGI脚本
+struct http_response_t *execute_cgi_python(struct http_request_t *request);
+
+
+/****************************
+ * serve_fcgi.c
+ ***************************/
 // 处理FCGI动态请求
 struct http_response_t *execute_fcgi(struct http_request_t *request);
 

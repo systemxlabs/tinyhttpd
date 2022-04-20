@@ -93,7 +93,7 @@ int handle_conn(void *client_sockfd_ptr) {
 
     // 处理请求
     struct http_response_t *response = process_request(request);
-    printf("Thread %d return response: %d %s\n", (int) pthread_self(), response->status_code, response->status_text);
+    printf("Thread %d return response: %d %s %s\n", (int) pthread_self(), response->status_code, response->status_text, response->raw_response);
 
     // 返回响应
     send_response(client_sockfd, response);
@@ -125,7 +125,7 @@ struct http_response_t *process_request(struct http_request_t *request) {
 }
 
 void send_response(int client_sockfd, struct http_response_t *response) {
-    char *raw_response = generate_raw_response(response);
+    char *raw_response = response->raw_response ? response->raw_response : generate_raw_response(response);
     if (send(client_sockfd, raw_response, strlen(raw_response), 0) < 0) {  // 需要用strlen，sizeof返回的是指针大小，即char *
         perror("send response failed.\n");
         exit(1);

@@ -21,8 +21,19 @@ struct http_request_t *parse_request(char *raw_request) {
     memcpy(url, raw_request, url_len);
     url[url_len] = '\0';
     raw_request += url_len + 1; // 跳过空格
-    // TODO 临时将url设置为path
-    request->path = url;
+    // 解析url中的path
+    size_t path_len = strcspn(url, "?");
+    char *path = (char *) malloc(path_len + 1);
+    memcpy(path, url, path_len);
+    path[path_len] = '\0';
+    request->path = path;
+    url += path_len + 1; // 跳过空格
+    // 解析url中的query_string
+    size_t query_string_len = strlen(url);
+    char *query_string = (char *) malloc(query_string_len + 1);
+    memcpy(query_string, url, query_string_len);
+    query_string[query_string_len] = '\0';
+    request->query_string = query_string;
 
     // 解析http版本
     size_t version_len = strcspn(raw_request, "\r\n");
