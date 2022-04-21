@@ -94,23 +94,24 @@ int handle_conn(void *client_sockfd_ptr) {
     // 处理请求
     struct http_response_t *response = process_request(request);
     printf("Thread %d return response: %d %s %s\n", (int) pthread_self(), response->status_code, response->status_text, response->raw_response);
+    free(request);
 
     // 返回响应
     send_response(client_sockfd, response);
+    free(response);
 
     close(client_sockfd);
     return 0;
 }
 
 struct http_response_t *process_request(struct http_request_t *request) {
-    // TODO
     printf("Thread %d process request: %s %s\n", (int) pthread_self(), request->method, request->path);
     if (is_static_request(request)) {
         printf("Thread %d is static request\n", (int) pthread_self());
         return execute_file(request);
     }
 
-    // TODO 可配置
+    // TODO 可配置使用cgi还是fcgi
     bool cgi_on = true;
     if (cgi_on) {
         printf("Thread %d is cgi request\n", (int) pthread_self());
