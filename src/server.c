@@ -93,7 +93,8 @@ int handle_conn(void *client_sockfd_ptr) {
 
     // 处理请求
     struct http_response_t *response = process_request(request);
-    printf("Thread %d return response: %d %s %s\n", (int) pthread_self(), response->status_code, response->status_text, response->raw_response);
+    printf("Thread %d return response, status code: %d, status text: %s, raw response: %s\n",
+           (int) pthread_self(), response->status_code, response->status_text, response->raw_response);
     free(request);
 
     // 返回响应

@@ -20,6 +20,7 @@ struct http_response_t *execute_file(struct http_request_t *request) {
     response->status_code = 200;
     response->status_text = "OK";
     response->content_type = "text/html";
+    response->content_length = strlen(content);
     response->body = content;
     return response;
 }

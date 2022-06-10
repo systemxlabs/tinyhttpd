@@ -15,6 +15,9 @@ C 语言实现简单的 HTTP 服务器。
 - [ ] epoll 改造
 - [ ] 支持FastCGI协议
 - [ ] 优雅关闭
+- [ ] 反向代理（转发http请求）
+- [ ] 支持Java servlet
+- [ ] 支持HTTPS
 
 ## 项目结构
 ```
@@ -62,7 +65,9 @@ C 语言实现简单的 HTTP 服务器。
 
 客户端发送请求
 1. 通过http client发送请求 `./example_client`（同服务器一同构建）
-2. 通过chrome/postman/curl发送请求 `curl http://localhost:8888/index.html` TODO
+2. 通过chrome/postman/curl发送请求
+    1. 发送静态请求 `curl "http://localhost:8888/index.html"`
+    2. 发送cgi请求 `curl "http://localhost:8888/cgi-bin/student.py?name=Tom"` / `curl "http://localhost:8888/cgi-bin/student.py?name=Tom"`
 
 注意事项
 1. cgi脚本需要赋予执行权限 `chmod +x xxx.py`
@@ -103,3 +108,29 @@ FastCGI 的出现是为了解决 CGI fork-and-exec 模式的低效。TODO
 通过path后缀来识别请求类型，如果是静态请求，则直接返回静态资源，如果是动态请求，则调用cgi程序，并将cgi程序的输出作为返回结果。
 
 **5. 如果整个请求是一段段发送的，如何处理？**
+
+**6. CGI协议父子进程管道通信，父进程始终是同一个，在高并发请求下，多个请求在同一个父进程内通过管道向各自子进程传输请求body时是否会混乱？**
+
+**7. 常见 web server，如tomcat、nginx和apache httpd等，有什么区别？**
+
+> https://www.zhihu.com/question/32212996
+
+> 其实可以说没有什么区别，HTTP Server本质上来说都是这样几件事：
+> 
+> 1.监听端口接收（accept）
+> 2.socket连接解析HTTP请求
+> 3.使用通用或专用协议对请求进行分发
+> 4.接收分发的请求产生的运行结果
+> 5.将结果格式化成HTTP Response并写到socket里面
+> 6.关闭连接或者Keep-Alive
+> 
+> 区别一方面在于用了什么语言来实现（Tomcat用Java），一方面是分发时支持的具体协议，
+> Tomcat只支持Servlet接口， 
+> Apache和nginx支持CGI、FastCGI、反向代理（可以认为是用HTTP协议进行HTTP请求的分发）、静态资源（可以认为是分发到磁盘读写）等，还可以用扩展模块支持其他分发方式（比如WSGI）。
+> 除此以外就都是实现方式的问题了。
+> 
+> 我们进一步可以说一下进程内分发和进程外分发的问题，
+> 有些分发方式是进程内分发的，需要通过内存传递一些对象，这种分发方式通常也是绑定语言的，所以一般必须用相应的语言实现（比如Servlet）；某些语言有特殊的FFI（如Python有C API），也可以通过FFI的方式调用。
+> 另一些分发方式是进程外的，只要序列化格式匹配就可以在不同语言之间通用，如FastCGI、HTTP等，这些分发就可以用统一的方法。
+
+**8. CGI协议为什么要fork一个子进程而不是直接在父进程直接执行脚本？**

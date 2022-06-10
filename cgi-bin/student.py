@@ -20,11 +20,12 @@ if method == "GET":
         key_value = pair.split("=")
         if key_value[0] == "name":
             name = key_value[1]
-            print("200 OK HTTP/1.1")
-            print("Content-Type: text/html; charset=utf-8\n")
-            print("<html><body>")
-            print("<p>Got the student: %s</p>" % get_student_from_db(name))
-            print("</body></html>")
+            print("HTTP/1.1 200 OK", end="\r\n")
+            print("Content-Type: text/html; charset=utf-8", end="\r\n")
+            content = "<html><body>" + "<p>Got the student: %s</p>" % get_student_from_db(name) + "</body></html>"
+            print("Content-Length: %d" % len(content), end="\r\n")
+            print("", end="\r\n")  # 空行
+            print(content, end="")
 elif method == "POST":
     query_string_pairs = query_string.split("&")
     name = ""
@@ -38,11 +39,12 @@ elif method == "POST":
             age = int(key_value[1])
         elif key_value[0] == "grade":
             grade = key_value[1]
-    print("200 OK HTTP/1.1")
-    print("Content-Type: text/html; charset=utf-8\n")
-    print("<html><body>")
-    print("<p>Created student: %s</p>" % create_student_in_db(name, age, grade))
-    print("</body></html>")
+    print("HTTP/1.1 200 OK")
+    print("Content-Type: text/html; charset=utf-8")
+    content = "<html><body>" + "<p>Created student: %s</p>" % create_student_in_db(name, age, grade) + "</body></html>"
+    print("Content-Length: %d" % len(content))
+    print("\n")  # 空行
+    print(content)
 exit(0)
 
 

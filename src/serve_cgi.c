@@ -53,6 +53,7 @@ struct http_response_t *execute_cgi_python(struct http_request_t *request) {
 
         // 执行cgi程序
         char command[255];
+        // 拼接成 ./cgi-bin/student.py（cgi脚本会被编译进build目录）
         sprintf(command, ".%s", request->path);
         if (execl(command, command, (char *) 0) < 0) {
             puts(generate_raw_response(build_response_500()));

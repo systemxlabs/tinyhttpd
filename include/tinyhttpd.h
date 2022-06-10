@@ -73,6 +73,8 @@ struct http_request_t *parse_request(char *raw_request);
 struct http_response_t *validate_request(struct http_request_t *request);
 // 判断是否为静态请求
 bool is_static_request(struct http_request_t *request);
+// 判断是否为cgi请求
+bool is_cgi_request(struct http_request_t *request);
 
 
 /****************************

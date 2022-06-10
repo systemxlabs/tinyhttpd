@@ -92,7 +92,26 @@ bool is_static_request(struct http_request_t *request) {
     if (strcasecmp(request->method, HTTP_GET) == 0 &&
             (str_end_with(request->path, ".html")
                 || str_end_with(request->path, ".css")
-                || str_end_with(request->path, ".js"))) {
+                || str_end_with(request->path, ".js")
+                || str_end_with(request->path, ".ico"))) {
+        return true;
+    }
+    return false;
+}
+
+bool is_cgi_request(struct http_request_t *request) {
+    if (request == NULL || request->path == NULL) {
+        return false;
+    }
+    // 如果path起始为"/cgi-bin"，则认为是cgi请求
+    if (strcasecmp(request->method, HTTP_GET) == 0 && strcmp(request->path, "/") == 0) {
+        return true;
+    }
+    if (strcasecmp(request->method, HTTP_GET) == 0 &&
+        (str_end_with(request->path, ".html")
+         || str_end_with(request->path, ".css")
+         || str_end_with(request->path, ".js")
+         || str_end_with(request->path, ".ico"))) {
         return true;
     }
     return false;
