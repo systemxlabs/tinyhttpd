@@ -23,6 +23,18 @@ bool str_end_with(const char *str, const char *suffix) {
     return true;
 }
 
+bool str_start_with(const char *str, const char *prefix) {
+    if (str == NULL || prefix == NULL) {
+        return false;
+    }
+    size_t str_len = strlen(str);
+    size_t prefix_len = strlen(prefix);
+    if (str_len < prefix_len) {
+        return false;
+    }
+    return memcmp(prefix, str, prefix_len) == 0;
+}
+
 char *read_file_as_str(const char *filename) {
     FILE *fp = fopen(filename, "r");
     if (fp == NULL) {

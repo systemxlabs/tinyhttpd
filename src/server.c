@@ -112,18 +112,18 @@ struct http_response_t *process_request(struct http_request_t *request) {
         return execute_file(request);
     }
 
-    // TODO 可配置使用cgi还是fcgi
-    bool cgi_on = true;
-    if (cgi_on) {
+    if (is_cgi_request(request)) {
         printf("Thread %d is cgi request\n", (int) pthread_self());
         return execute_cgi(request);
     }
-    bool fcgi_on = true;
-    if (fcgi_on) {
+
+    if (is_fcgi_request(request)) {
         printf("Thread %d is fcgi request\n", (int) pthread_self());
         return execute_fcgi(request);
     }
-    return NULL;
+
+    printf("Thread %d can not recognize request to process\n", (int) pthread_self());
+    return build_response_500();
 }
 
 void send_response(int client_sockfd, struct http_response_t *response) {

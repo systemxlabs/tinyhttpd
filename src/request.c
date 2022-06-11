@@ -104,17 +104,23 @@ bool is_cgi_request(struct http_request_t *request) {
         return false;
     }
     // 如果path起始为"/cgi-bin"，则认为是cgi请求
-    if (strcasecmp(request->method, HTTP_GET) == 0 && strcmp(request->path, "/") == 0) {
-        return true;
+    return str_start_with(request->path, "/cgi-bin");
+}
+
+bool is_fcgi_request(struct http_request_t *request) {
+    if (request == NULL || request->path == NULL) {
+        return false;
     }
-    if (strcasecmp(request->method, HTTP_GET) == 0 &&
-        (str_end_with(request->path, ".html")
-         || str_end_with(request->path, ".css")
-         || str_end_with(request->path, ".js")
-         || str_end_with(request->path, ".ico"))) {
-        return true;
+    // 如果path起始为"/fcgi-bin"，则认为是fcgi请求
+    return str_start_with(request->path, "/fcgi-bin");
+}
+
+bool is_proxy_request(struct http_request_t *request) {
+    if (request == NULL || request->path == NULL) {
+        return false;
     }
-    return false;
+    // 如果path起始为"/proxy"，则认为是proxy请求
+    return str_start_with(request->path, "/proxy");
 }
 
 struct http_response_t *validate_request(struct http_request_t *request) {

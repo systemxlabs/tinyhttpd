@@ -42,7 +42,9 @@ char *generate_raw_response(struct http_response_t *response) {
     strcat(raw_response, "\r\n");
 
     // 响应体
-    strcat(raw_response, response->body);
+    if (response->body != NULL) {
+        strcat(raw_response, response->body);
+    }
 
     return strdup(raw_response);
 }
@@ -72,6 +74,12 @@ struct http_response_t *build_response_500() {
     response->version = HTTP_VERSION_11;
     response->status_code = 500;
     response->status_text = "Internal Server Error";
+    response->content_type = "text/html";
+
+    // TODO 从文件中读取500页面
+    char *response_500_html = "<html><head><title>500 Internal Server Error</title></head><body><h1>500 Internal Server Error</h1></body></html>";
+    response->content_length = strlen(response_500_html);
+    response->body = response_500_html;
     return response;
 }
 

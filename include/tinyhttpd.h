@@ -75,6 +75,10 @@ struct http_response_t *validate_request(struct http_request_t *request);
 bool is_static_request(struct http_request_t *request);
 // 判断是否为cgi请求
 bool is_cgi_request(struct http_request_t *request);
+// 判断是否为fcgi请求
+bool is_fcgi_request(struct http_request_t *request);
+// 判断是否为反向代理请求
+bool is_proxy_request(struct http_request_t *request);
 
 
 /****************************
@@ -121,6 +125,7 @@ struct http_response_t *execute_fcgi(struct http_request_t *request);
  * util.c
  ***************************/
 bool str_end_with(const char *str, const char *suffix);
+bool str_start_with(const char *str, const char *prefix);
 char *read_file_as_str(const char *filename);
 char *str_concat(const char *str1, const char *str2);
 

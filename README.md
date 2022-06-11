@@ -1,9 +1,8 @@
 # tinyhttpd
 C 语言实现简单的 HTTP 服务器。
-- https://github.com/EZLippi/Tinyhttpd
-- https://github.com/leezhxing/tiny-httpd
-- https://github.com/reyk/httpd
-- https://github.com/AngryHacker/articles/blob/master/src/code_reading/tinyhttpd.md
+- HTTP/1.1 协议: doc/rfc2616.pdf, [RFC 2616](https://datatracker.ietf.org/doc/html/rfc2616)
+- CGI 1.1 协议: doc/rfc3875.pdf, [RFC 3875](https://datatracker.ietf.org/doc/html/rfc3875)
+- TLS 1.2 协议
 
 实现功能
 - [x] 多线程处理
@@ -67,7 +66,8 @@ C 语言实现简单的 HTTP 服务器。
 1. 通过http client发送请求 `./example_client`（同服务器一同构建）
 2. 通过chrome/postman/curl发送请求
     1. 发送静态请求 `curl "http://localhost:8888/index.html"`
-    2. 发送cgi请求 `curl "http://localhost:8888/cgi-bin/student.py?name=Tom"` / `curl "http://localhost:8888/cgi-bin/student.py?name=Tom"`
+    2. 发送cgi请求 `curl "http://localhost:8888/cgi-bin/student.py?name=Tom"` / `curl -H "Content-Type: application/json" -X POST -d '{"name":"John","age":18,"grade":"B"}' "http://localhost:8888/cgi-bin/student.py"`
+
 
 注意事项
 1. cgi脚本需要赋予执行权限 `chmod +x xxx.py`
@@ -134,3 +134,15 @@ FastCGI 的出现是为了解决 CGI fork-and-exec 模式的低效。TODO
 > 另一些分发方式是进程外的，只要序列化格式匹配就可以在不同语言之间通用，如FastCGI、HTTP等，这些分发就可以用统一的方法。
 
 **8. CGI协议为什么要fork一个子进程而不是直接在父进程直接执行脚本？**
+
+**9. CGI脚本需要输出响应哪些内容？**
+
+CGI脚本响应分为两类：NPH（Non-Parsed Header） 响应 和 CGI响应。
+NPH响应包含完整的HTTP响应，服务器必须确保脚本输出未经修改发送到客户端。
+CGI响应包括响应内容和一些响应头信息（如Content-Type），服务器接受后需要进一步处理。
+
+## 参考
+- https://github.com/EZLippi/Tinyhttpd
+- https://github.com/leezhxing/tiny-httpd
+- https://github.com/reyk/httpd
+- https://github.com/AngryHacker/articles/blob/master/src/code_reading/tinyhttpd.md

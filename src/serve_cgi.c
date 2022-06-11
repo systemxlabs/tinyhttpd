@@ -43,12 +43,15 @@ struct http_response_t *execute_cgi_python(struct http_request_t *request) {
         // 设置环境变量
         char method_env[255];
         char query_string_env[255];
+        char content_type_env[255];
         char content_length_env[255];
         sprintf(method_env, "REQUEST_METHOD=%s", request->method);
         sprintf(query_string_env, "QUERY_STRING=%s", request->query_string);
+        sprintf(content_type_env, "CONTENT_TYPE=%s", request->content_type);
         sprintf(content_length_env, "CONTENT_LENGTH=%d", request->content_length);
         putenv(method_env);
         putenv(query_string_env);
+        putenv(content_type_env);
         putenv(content_length_env);
 
         // 执行cgi程序
@@ -67,15 +70,21 @@ struct http_response_t *execute_cgi_python(struct http_request_t *request) {
         if (request->content_length > 0) {
             write(parent_child_pipe[1], request->body, request->content_length);
         }
+
+        // 关闭管道会发生EOF https://stackoverflow.com/questions/22032120/closing-pipe-file-descriptor-in-c
         close(parent_child_pipe[1]);  // 关闭父进程到子进程的管道写端
+
+        // TODO 可以等待超时，超时则kill子进程并返回500
         wait(&rv);  // 等待子进程结束，返回子进程的退出状态
 
         // 读取CGI脚本的输出
         // TODO 优化读取
         if ( (n = read(child_parent_pipe[0], raw_response, MAXLINE)) < 0) {
+            printf("Error reading from CGI script.\n");
             return build_response_500();
         }
         if (n == 0) {
+            printf("Reading nothing from CGI script.\n");
             return build_response_500();
         }
         raw_response[n] = '\0';
