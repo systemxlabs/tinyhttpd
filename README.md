@@ -1,8 +1,9 @@
 # tinyhttpd
 C 语言实现简单的 HTTP 服务器。
-- HTTP/1.1 协议: doc/rfc2616.pdf, [RFC 2616](https://datatracker.ietf.org/doc/html/rfc2616)
-- CGI 1.1 协议: doc/rfc3875.pdf, [RFC 3875](https://datatracker.ietf.org/doc/html/rfc3875)
-- TLS 1.2 协议
+- HTTP/1.1 协议：doc/rfc2616.pdf, [RFC 2616](https://datatracker.ietf.org/doc/html/rfc2616)
+- CGI 1.1 协议：doc/rfc3875.pdf, [RFC 3875](https://datatracker.ietf.org/doc/html/rfc3875)
+- FastCGI 协议：doc/FastCGI-Specification.pdf, [FastCGI 协议规范中文版](https://www.infoq.cn/article/vicwtitzvk7b4ynoej3e)
+- TLS 1.2 协议：doc/rfc5246.pdf, [RFC 5246](https://datatracker.ietf.org/doc/html/rfc5246)
 
 实现功能
 - [x] 多线程处理
@@ -97,6 +98,9 @@ CGI 是 Web 服务器和一个独立的进程之间的协议，它会把HTTP请�
 CGI 协议采用 fork-and-exec 模式，即来一个请求，fork一个子进程来exec CGI脚本。子进程会设置环境变量并执行CGI脚本，
 父进程会将请求body发送给子进程， 子进程会将CGI脚本执行结果返回给父进程。
 
+CGI程序运行在独立的进程中，并对每个Web请求创建一个进程，在结束时销毁。这种“每个请求一个新进程”的模型使得CGI程序非常容易实现，但效率较差，难以扩展。
+在高负载情况下，进程创建和销毁进程的开销变得很大。此外，由于地址空间无法共享，CGI进程模型限制了资源重用方法，如重用数据库连接、内存缓存等。
+
 FastCGI 的出现是为了解决 CGI fork-and-exec 模式的低效。TODO
 
 **2. Socket 是什么？和 Unix Domain Socket、Websocket 什么区别？**
@@ -134,6 +138,9 @@ FastCGI 的出现是为了解决 CGI fork-and-exec 模式的低效。TODO
 > 另一些分发方式是进程外的，只要序列化格式匹配就可以在不同语言之间通用，如FastCGI、HTTP等，这些分发就可以用统一的方法。
 
 **8. CGI协议为什么要fork一个子进程而不是直接在父进程直接执行脚本？**
+
+由于CGI脚本语言不固定，无法保证脚本语言与服务器语言直接在同一进程内可以进行通信。因此采用进程间通信，只需保证消息格式一致即可。
+如果直接在进程内运行CGI脚本，出现问题会导致服务器受影响。
 
 **9. CGI脚本需要输出响应哪些内容？**
 

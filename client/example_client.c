@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include "openssl/rand.h"
 
 void send_request_return_200(int sockfd) {
 }
@@ -18,6 +19,9 @@ void send_request_return_501(int sockfd) {
 
 
 int main() {
+    unsigned char randbuf[1024];
+    RAND_bytes(randbuf, 1);
+    printf("随机数 %d\n", randbuf[0]);
     // 1. 创建套接字
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
