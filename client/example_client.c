@@ -22,6 +22,9 @@ int main() {
     unsigned char randbuf[1024];
     RAND_bytes(randbuf, 1);
     printf("随机数 %d\n", randbuf[0]);
+    printf("随机数 %d\n", randbuf[1]);
+    printf("随机数 %d\n", randbuf[2]);
+    printf("随机数 %d\n", randbuf[4]);
     // 1. 创建套接字
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {

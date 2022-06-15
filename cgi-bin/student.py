@@ -16,7 +16,6 @@ def create_student_in_db(name, age, grade):
 query_string = os.getenv("QUERY_STRING")
 method = os.getenv("REQUEST_METHOD")
 content_type = os.getenv("CONTENT_TYPE")
-body = input()
 
 if method == "GET":
     query_string_pairs = query_string.split("&")
@@ -27,11 +26,13 @@ if method == "GET":
             print("HTTP/1.1 200 OK", end="\r\n")
             print("Content-Type: text/html; charset=utf-8", end="\r\n")
             content = "<html><body>" + "<p>Got the student: %s</p>" % get_student_from_db(name) + "</body></html>"
-            print("Content-Length: %d" % len(content), end="\r\n")
+            print("Content-Length: %d" % len(bytes(content, encoding="utf-8")), end="\r\n")
             print("", end="\r\n")  # 空行
             print(content, end="")
 
 elif method == "POST":
+    # TODO 读取 Content-Length长度字节内容
+    body = input()
     name = ""
     age = -1
     grade = "Unknown"
@@ -44,7 +45,8 @@ elif method == "POST":
     print("HTTP/1.1 200 OK", end="\r\n")
     print("Content-Type: text/html; charset=utf-8", end="\r\n")
     content = "<html><body>" + "<p>Created student: %s</p>" % create_student_in_db(name, age, grade) + "</body></html>"
-    print("Content-Length: %d" % len(content), end="\r\n")
+    # len统计str类型的结果是字符数（一个汉字为一个字符），非字节数（一个汉字utf-8编码是3个字节）
+    print("Content-Length: %d" % len(bytes(content, encoding="utf-8")), end="\r\n")
     print("", end="\r\n")  # 空行
     print(content, end="")
 exit(0)

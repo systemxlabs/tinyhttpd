@@ -80,7 +80,8 @@ int handle_conn(void *client_sockfd_ptr) {
     printf("Thread %d received request: %s\n", (int) pthread_self(), raw_request);
 
     // 解析请求
-    // TODO 编解码
+    // TODO 编解码 Accept-Encoding/Content-Encoding
+    // TODO 对query string（浏览器会对query string中文字符进行编码后传输）解码
     struct http_request_t *request = parse_request(raw_request);
     printf("Thread %d parsed request: %s %s %s\n", (int) pthread_self(), request->method, request->path, request->body);
 
