@@ -40,9 +40,17 @@ set(CMAKE_C_STANDARD 11)
 set(OPENSSL_ROOT_DIR /opt/homebrew/opt/openssl@1.1/)  # brew --prefix openssl
 find_package(OpenSSL REQUIRED)
 
+add_library(tls src/tls.c)
+target_include_directories(tls PUBLIC include)
+target_include_directories(tls PUBLIC ${OPENSSL_INCLUDE_DIR})
+target_link_libraries(tls PUBLIC ${OPENSSL_LIBRARIES})
+
+
 aux_source_directory(src SRC_FILES)
 add_executable(tinyhttpd ${SRC_FILES})
 target_include_directories(tinyhttpd PRIVATE include)
+target_link_libraries(tinyhttpd PRIVATE tls)
+
 # TODO 临时方案
 configure_file(cgi-bin/student.py ${CMAKE_CURRENT_BINARY_DIR}/cgi-bin/student.py COPYONLY)
 

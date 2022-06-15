@@ -11,6 +11,7 @@
 #include <arpa/inet.h>
 #include <string.h>
 #include "tinyhttpd.h"
+#include "tls.h"
 
 int main() {
     // TODO 重构成读取配置文件端口号
@@ -56,14 +57,15 @@ int server_start(int port) {
 }
 
 int accept_conn(int server_sockfd) {
-    struct sockaddr_in client_addr;
-    socklen_t client_len = sizeof(client_addr);
-    int client_sockfd = accept(server_sockfd, (struct sockaddr *) &client_addr, &client_len);
+    // struct sockaddr_in client_addr;
+    // socklen_t client_len = sizeof(client_addr);
+    // int client_sockfd = accept(server_sockfd, (struct sockaddr *) &client_addr, &client_len);
+    int client_sockfd = tls_accept(server_sockfd);
     if (client_sockfd < 0) {
         perror("accept conn failed.\n");
         exit(1);
     }
-    printf("Accept a new connection from %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+    // printf("Accept a new connection from %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
     return client_sockfd;
 }
 
@@ -97,6 +99,7 @@ int handle_conn(void *client_sockfd_ptr) {
     struct http_response_t *response = process_request(request);
     printf("Thread %d return response, status code: %d, status text: %s, raw response: %s\n",
            (int) pthread_self(), response->status_code, response->status_text, response->raw_response);
+    // TODO 是否需要释放其成员
     free(request);
 
     // 返回响应

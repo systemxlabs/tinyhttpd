@@ -66,9 +66,11 @@ C 语言实现简单的 HTTP 服务器。
 客户端发送请求
 1. 通过http client发送请求 `./example_client`（同服务器一同构建）
 2. 通过chrome/postman/curl发送请求
-    1. 发送静态请求 `curl "http://localhost:8888/index.html"`
+    1. 发送静态请求 `curl "http://localhost:8888/index.html" --verbose`
     2. 发送cgi请求 `curl "http://localhost:8888/cgi-bin/student.py?name=Tom"` / `curl -H "Content-Type: application/json" -X POST -d '{"name":"John","age":18,"grade":"B"}' "http://localhost:8888/cgi-bin/student.py"`
 
+调试TLS协议
+1. `curl "https://localhost:8888/index.html" --trace -`
 
 注意事项
 1. cgi脚本需要赋予执行权限 `chmod +x xxx.py`
