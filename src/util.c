@@ -4,6 +4,7 @@
 
 #include <stdbool.h>
 #include <string.h>
+#include <ctype.h>
 #include "tinyhttpd.h"
 
 bool str_end_with(const char *str, const char *suffix) {
@@ -57,4 +58,38 @@ char *str_concat(const char *str1, const char *str2) {
     char *str = malloc(strlen(str1) + strlen(str2) + 1);
     sprintf(str, "%s%s", str1, str2);
     return str;
+}
+
+char* url_decode(const char *encoded_url)
+{
+    char *decoded_url = (char *) malloc(strlen(encoded_url) + 1);
+    char *dst = decoded_url;
+    char a, b;
+    while (*encoded_url) {
+        if ((*encoded_url == '%') &&
+            ((a = encoded_url[1]) && (b = encoded_url[2])) &&
+            (isxdigit(a) && isxdigit(b))) {
+            if (a >= 'a')
+                a -= 'a'-'A';
+            if (a >= 'A')
+                a -= ('A' - 10);
+            else
+                a -= '0';
+            if (b >= 'a')
+                b -= 'a'-'A';
+            if (b >= 'A')
+                b -= ('A' - 10);
+            else
+                b -= '0';
+            *dst++ = 16*a+b;
+            encoded_url+=3;
+        } else if (*encoded_url == '+') {
+            *dst++ = ' ';
+            encoded_url++;
+        } else {
+            *dst++ = *encoded_url++;
+        }
+    }
+    *dst++ = '\0';
+    return decoded_url;
 }

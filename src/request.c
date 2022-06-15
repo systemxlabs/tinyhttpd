@@ -26,14 +26,14 @@ struct http_request_t *parse_request(char *raw_request) {
     char *path = (char *) malloc(path_len + 1);
     memcpy(path, url, path_len);
     path[path_len] = '\0';
-    request->path = path;
+    request->path = url_decode(path);  // 对url解码（浏览器会对中文字符进行编码）
     url += path_len + 1; // 跳过空格
     // 解析url中的query_string
     size_t query_string_len = strlen(url);
     char *query_string = (char *) malloc(query_string_len + 1);
     memcpy(query_string, url, query_string_len);
     query_string[query_string_len] = '\0';
-    request->query_string = query_string;
+    request->query_string = url_decode(query_string);  // 对url解码（浏览器会对中文字符进行编码）
 
     // 解析http版本
     size_t version_len = strcspn(raw_request, "\r\n");

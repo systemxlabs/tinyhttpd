@@ -128,5 +128,6 @@ bool str_end_with(const char *str, const char *suffix);
 bool str_start_with(const char *str, const char *prefix);
 char *read_file_as_str(const char *filename);
 char *str_concat(const char *str1, const char *str2);
+char *url_decode(const char *encoded_url);
 
 #endif //TINYHTTPD_TINYHTTPD_H
