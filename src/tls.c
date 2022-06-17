@@ -6,15 +6,20 @@
 #include <stdint.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <unistd.h>
 #include <pthread.h>
 #include <arpa/inet.h>
 #include <string.h>
 #include <stdlib.h>
 #include "openssl/rand.h"
+#include "openssl/x509v3.h"
+#include "openssl/pem.h"
 #include "tls.h"
 
+/******************************************************************************
+ * socket相关函数包装
+ *****************************************************************************/
 int tls_accept(int server_sockfd) {
+    // 接收客户端连接
     struct sockaddr_in client_addr;
     socklen_t client_len = sizeof(client_addr);
     int client_sockfd = accept(server_sockfd, (struct sockaddr *) &client_addr, &client_len);
@@ -22,8 +27,15 @@ int tls_accept(int server_sockfd) {
         perror("accept conn failed.\n");
         exit(1);
     }
+
+    // 创建并初始化tls context
+    tls_context_t *context = malloc(sizeof(tls_context_t));
+    context->client_sockfd = client_sockfd;
+    context->cert_filepath = "/Users/lewis/Github/tinyhttpd/cert/certificate.pem";
+    context->key_filepath = "/Users/lewis/Github/tinyhttpd/cert/key.pem";
+
     // 执行 tls 握手
-    if (tls_handshake(client_sockfd)) {
+    if (tls_handshake(context)) {
         perror("tls handshake failed.\n");
         exit(1);
     }
@@ -31,10 +43,72 @@ int tls_accept(int server_sockfd) {
     return client_sockfd;
 }
 
-int tls_handshake(int client_sockfd) {
+
+/******************************************************************************
+ * tls记录协议
+ *****************************************************************************/
+tls_record_t *tls_record_parse(uint8_t *record_data) {
+    tls_record_t *record = (tls_record_t *)malloc(sizeof(tls_record_t));
+    record->type = record_data[0];
+    record->version = record_data[1] << 8 | record_data[2];
+    record->length = record_data[3] << 8 | record_data[4];
+    record->fragment = record_data + 5;
+    printf("tls_record_parse type: %d, version: %d, length: %d\n", record->type, record->version, record->length);
+    return record;
+}
+
+tls_record_t *tls_record_create(uint8_t type, uint16_t version, void *data) {
+    tls_record_t *record = malloc(sizeof(tls_record_t));
+    record->type = type;
+    record->version = version;
+    if (type == TLS_RECORD_CONTENT_TYPE_HANDSHAKE) {
+        tls_handshake_t *handshake = (tls_handshake_t *)data;
+        // 计算握手数据长度
+        record->length = tls_handshake_length(handshake);
+        // 拷贝握手数据
+        record->fragment = malloc(record->length);
+        record->fragment[0] = handshake->type;
+        memcpy(record->fragment + 1, handshake->length, 3);
+        uint32_t handshake_data_length = handshake->length[0] << 16 | handshake->length[1] << 8 | handshake->length[2];
+        memcpy(record->fragment + 4, handshake->data, handshake_data_length);
+        // print_bytes(record->data, record->length);
+    }
+    printf("tls_record_create type: %02x, version: %02x, length: %02x\n", record->type, record->version, record->length);
+    return record;
+}
+
+uint16_t tls_record_length(tls_record_t *record) {
+    uint16_t length = sizeof(record->type)
+                    + sizeof(record->version)
+                    + sizeof(record->length)
+                    + record->length;
+    return length;
+}
+
+int tls_record_send(tls_context_t *context, tls_record_t *record) {
+    size_t raw_record_length = tls_record_length(record);
+    uint8_t *raw_record = malloc(raw_record_length);
+    raw_record[0] = record->type;
+    raw_record[1] = record->version >> 8;
+    raw_record[2] = record->version & 0xff;
+    raw_record[3] = record->length >> 8;
+    raw_record[4] = record->length & 0xff;
+    memcpy(raw_record + 5, record->fragment, record->length);
+    // print_bytes(raw_record, raw_record_length);
+    if (send(context->client_sockfd, raw_record, raw_record_length, 0) < 0) {
+        perror("send record failed.\n");
+        exit(1);
+    }
+}
+
+
+/******************************************************************************
+ * tls握手协议
+ *****************************************************************************/
+int tls_handshake(tls_context_t *context) {
     uint8_t raw_record[1024];
-    if (recv(client_sockfd, raw_record, sizeof(raw_record), 0) < 0) {
-        perror("recv raw_request failed.\n");
+    if (recv(context->client_sockfd, raw_record, sizeof(raw_record), 0) < 0) {
+        perror("recv raw_record failed.\n");
         exit(1);
     }
     print_bytes(raw_record, sizeof(raw_record));
@@ -42,27 +116,29 @@ int tls_handshake(int client_sockfd) {
     tls_record_t *record = tls_record_parse(raw_record);
     if (record->type == TLS_RECORD_CONTENT_TYPE_HANDSHAKE) {
         // 解析握手协议
-        tls_handshake_t *handshake = tls_handshake_parse(record->data);
+        tls_handshake_t *handshake = tls_handshake_parse(record->fragment);
         if (handshake->type == TLS_HANDSHAKE_TYPE_CLIENT_HELLO) {
             // 解析握手协议ClientHello
             tls_client_hello_t *client_hello = tls_client_hello_parse(handshake->data);
-            // 创建握手协议ServertHello
+
+            // 创建并发送ServerHello
             tls_server_hello_t *server_hello = tls_server_hello_create(client_hello);
-            // 发送握手协议ServerHello
-            tls_server_hello_send(client_sockfd, server_hello);
+            tls_server_hello_send(context, server_hello);
+
+            // 更新context
+            context->server_random = server_hello->random;
+            context->session_id = server_hello->session_id;
+            context->cipher_suite = server_hello->cipher_suite;
+            context->compression_method = server_hello->compression_method;
+
+            // 创建并发送ServerCertificate
+            tls_server_certificate_t *server_certificate = tls_server_certificate_create(context);
+            tls_server_certificate_send(context, server_certificate);
         }
     }
     return 0;
 }
-tls_record_t *tls_record_parse(uint8_t *record_data) {
-    tls_record_t *record = (tls_record_t *)malloc(sizeof(tls_record_t));
-    record->type = record_data[0];
-    record->version = record_data[1] << 8 | record_data[2];
-    record->length = record_data[3] << 8 | record_data[4];
-    record->data = record_data + 5;
-    printf("tls_record_parse type: %d, version: %d, length: %d\n", record->type, record->version, record->length);
-    return record;
-}
+
 tls_handshake_t *tls_handshake_parse(uint8_t *handshake_data) {
     tls_handshake_t *handshake = (tls_handshake_t *)malloc(sizeof(tls_handshake_t));
     handshake->type = handshake_data[0];
@@ -75,6 +151,108 @@ tls_handshake_t *tls_handshake_parse(uint8_t *handshake_data) {
     return handshake;
 }
 
+tls_handshake_t *tls_handshake_create(uint8_t type, void *data) {
+    tls_handshake_t *handshake = malloc(sizeof(tls_handshake_t));
+    handshake->type = type;
+
+    if (type == TLS_HANDSHAKE_TYPE_SERVER_HELLO) {
+        tls_server_hello_t *server_hello = (tls_server_hello_t *)data;
+
+        // 计算server hello数据长度
+        uint32_t handshake_data_length = tls_server_hello_length(server_hello);
+        uint8_t *length_ptr = (uint8_t *)&handshake_data_length;
+        handshake->length[0] = length_ptr[2];
+        handshake->length[1] = length_ptr[1];
+        handshake->length[2] = length_ptr[0];
+
+        // 拷贝server hello数据
+        handshake->data = malloc(handshake_data_length);
+        uint8_t *data_ptr = handshake->data;
+        data_ptr[0] = server_hello->version >> 8;
+        data_ptr[1] = server_hello->version & 0xff;
+        data_ptr += 2;
+        data_ptr[0] = server_hello->random.gmt_unix_time >> 24;
+        data_ptr[1] = server_hello->random.gmt_unix_time >> 16;
+        data_ptr[2] = server_hello->random.gmt_unix_time >> 8;
+        data_ptr[3] = server_hello->random.gmt_unix_time & 0xff;
+        data_ptr += 4;
+        memcpy(data_ptr, server_hello->random.random_bytes, TLS_RANDOM_BYTES_LEN);
+        data_ptr += TLS_RANDOM_BYTES_LEN;
+        data_ptr[0] = server_hello->session_id.session_id_length;
+        data_ptr += 1;
+        if (server_hello->session_id.session_id_length > 0) {
+            memcpy(data_ptr, server_hello->session_id.session_id, server_hello->session_id.session_id_length);
+            data_ptr += server_hello->session_id.session_id_length;
+        }
+        data_ptr[0] = server_hello->cipher_suite >> 8;
+        data_ptr[1] = server_hello->cipher_suite & 0xff;
+        data_ptr += 2;
+        data_ptr[0] = server_hello->compression_method;
+        data_ptr += 1;
+        data_ptr[0] = server_hello->extensions.extensions_length >> 8;
+        data_ptr[1] = server_hello->extensions.extensions_length & 0xff;
+        data_ptr += 2;
+        if (server_hello->extensions.extensions_length > 0) {
+            memcpy(data_ptr, server_hello->extensions.extensions, server_hello->extensions.extensions_length);
+            data_ptr += server_hello->extensions.extensions_length;
+        }
+        // print_bytes(handshake->data, handshake_data_length);
+    }
+    if (type == TLS_HANDSHAKE_TYPE_CERTIFICATE) {
+        tls_server_certificate_t *server_certificate = (tls_server_certificate_t *)data;
+
+        // 计算ServerCertificate数据长度
+        uint32_t handshake_data_length = tls_server_certificate_length(server_certificate);
+        uint8_t *length_ptr = (uint8_t *)&handshake_data_length;
+        handshake->length[0] = length_ptr[2];
+        handshake->length[1] = length_ptr[1];
+        handshake->length[2] = length_ptr[0];
+        printf("server_certificate length: %d\n", handshake->length[0] << 16 | handshake->length[1] << 8 | handshake->length[2]);
+
+        // 拷贝ServerCertificate数据
+        handshake->data = malloc(handshake_data_length);
+        uint8_t *data_ptr = handshake->data;
+        data_ptr[0] = server_certificate->certificates_length[0];
+        data_ptr[1] = server_certificate->certificates_length[1];
+        data_ptr[2] = server_certificate->certificates_length[2];
+        data_ptr += 3;
+
+        // 依次读取每个证书
+        uint32_t certificates_length = server_certificate->certificates_length[0] << 16 |
+                                        server_certificate->certificates_length[1] << 8 |
+                                        server_certificate->certificates_length[2];
+        printf("所有证书总长度（包含长度本身）: %d\n", certificates_length);
+        uint8_t *certificate_data_ptr = (uint8_t *) server_certificate->data;
+        uint32_t read_length = 0;
+        while (read_length < certificates_length) {
+            // 读取一个证书
+            memcpy(data_ptr, certificate_data_ptr, 3);  // 读取一个证书长度
+            uint32_t certificate_length = certificate_data_ptr[0] << 16 | certificate_data_ptr[1] << 8 | certificate_data_ptr[2];
+            data_ptr += 3;
+            read_length += 3;
+            certificate_data_ptr += 3;
+            memcpy(data_ptr, certificate_data_ptr, certificate_length);  // 读取一个证书内容
+            data_ptr += certificate_length;
+            read_length += certificate_length;
+            certificate_data_ptr += certificate_length;
+        }
+        print_bytes(handshake->data, handshake_data_length);
+    }
+    printf("tls_handshake_create type: %02x, length: %02x, %02x, %02x\n", handshake->type, handshake->length[0], handshake->length[1], handshake->length[2]);
+    return handshake;
+}
+
+uint16_t tls_handshake_length(tls_handshake_t *handshake) {
+    uint16_t length = sizeof(handshake->type)
+                    + sizeof(handshake->length)
+                    + (handshake->length[0] << 16 | handshake->length[1] << 8 | handshake->length[2]);
+    return length;
+}
+
+
+/******************************************************************************
+ * ClientHello
+ *****************************************************************************/
 tls_client_hello_t *tls_client_hello_parse(uint8_t *client_hello_data) {
     tls_client_hello_t *client_hello = malloc(sizeof(tls_client_hello_t));
 
@@ -122,6 +300,10 @@ tls_client_hello_t *tls_client_hello_parse(uint8_t *client_hello_data) {
     return client_hello;
 }
 
+
+/******************************************************************************
+ * ServerHello
+ *****************************************************************************/
 tls_server_hello_t *tls_server_hello_create(tls_client_hello_t *client_hello) {
     tls_server_hello_t *server_hello = malloc(sizeof(tls_server_hello_t));
     server_hello->version = TLS_PROTOCOL_VERSION_12;
@@ -135,7 +317,7 @@ tls_server_hello_t *tls_server_hello_create(tls_client_hello_t *client_hello) {
 //    server_hello->session_id.session_id = 0x01;
 
     // cipher suite TODO 临时测试
-    server_hello->cipher_suite = TLS_CIPHER_SUITE_TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384;
+    server_hello->cipher_suite = TLS_CIPHER_SUITE_TLS_RSA_WITH_AES_256_CBC_SHA256;
 
     // compression method TODO 临时测试
     server_hello->compression_method = TLS_COMPRESSION_METHOD_NULL;
@@ -149,99 +331,82 @@ tls_server_hello_t *tls_server_hello_create(tls_client_hello_t *client_hello) {
     return server_hello;
 }
 
-tls_handshake_t *tls_handshake_create(uint8_t type, void *data) {
-    tls_handshake_t *handshake = malloc(sizeof(tls_handshake_t));
-    handshake->type = type;
-    if (type == TLS_HANDSHAKE_TYPE_SERVER_HELLO) {
-        tls_server_hello_t *server_hello = (tls_server_hello_t *)data;
-
-        // 计算server hello数据长度
-        uint32_t length = 2 + 32 + (1 + server_hello->session_id.session_id_length) + 2 + 1 + (2 + server_hello->extensions.extensions_length);
-        uint8_t *length_ptr = (uint8_t *)&length;
-        handshake->length[0] = length_ptr[2];
-        handshake->length[1] = length_ptr[1];
-        handshake->length[2] = length_ptr[0];
-
-        // 拷贝server hello数据
-        handshake->data = malloc(length);
-        uint8_t *data_ptr = handshake->data;
-        data_ptr[0] = server_hello->version >> 8;
-        data_ptr[1] = server_hello->version & 0xff;
-        data_ptr += 2;
-        data_ptr[0] = server_hello->random.gmt_unix_time >> 24;
-        data_ptr[1] = server_hello->random.gmt_unix_time >> 16;
-        data_ptr[2] = server_hello->random.gmt_unix_time >> 8;
-        data_ptr[3] = server_hello->random.gmt_unix_time & 0xff;
-        data_ptr += 4;
-        memcpy(data_ptr, server_hello->random.random_bytes, TLS_RANDOM_BYTES_LEN);
-        data_ptr += TLS_RANDOM_BYTES_LEN;
-        data_ptr[0] = server_hello->session_id.session_id_length;
-        data_ptr += 1;
-        if (server_hello->session_id.session_id_length > 0) {
-            memcpy(data_ptr, server_hello->session_id.session_id, server_hello->session_id.session_id_length);
-            data_ptr += server_hello->session_id.session_id_length;
-        }
-        data_ptr[0] = server_hello->cipher_suite >> 8;
-        data_ptr[1] = server_hello->cipher_suite & 0xff;
-        data_ptr += 2;
-        data_ptr[0] = server_hello->compression_method;
-        data_ptr += 1;
-        data_ptr[0] = server_hello->extensions.extensions_length >> 8;
-        data_ptr[1] = server_hello->extensions.extensions_length & 0xff;
-        data_ptr += 2;
-        if (server_hello->extensions.extensions_length > 0) {
-            memcpy(data_ptr, server_hello->extensions.extensions, server_hello->extensions.extensions_length);
-            data_ptr += server_hello->extensions.extensions_length;
-        }
-        print_bytes(handshake->data, length);
-    }
-    printf("tls_handshake_create type: %02x, length: %02x, %02x, %02x\n", handshake->type, handshake->length[0], handshake->length[1], handshake->length[2]);
-    return handshake;
+uint32_t tls_server_hello_length(tls_server_hello_t *server_hello) {
+    uint32_t length = sizeof(server_hello->version)
+                    + sizeof(server_hello->random.gmt_unix_time) + sizeof(server_hello->random.random_bytes)
+                    + sizeof(server_hello->session_id.session_id_length) + server_hello->session_id.session_id_length
+                    + sizeof(server_hello->cipher_suite)
+                    + sizeof(server_hello->compression_method)
+                    + sizeof(server_hello->extensions.extensions_length) + server_hello->extensions.extensions_length;
+    return length;
 }
 
-tls_record_t *tls_record_create(uint8_t type, uint16_t version, void *data) {
-    tls_record_t *record = malloc(sizeof(tls_record_t));
-    record->type = type;
-    record->version = version;
-    if (type == TLS_RECORD_CONTENT_TYPE_HANDSHAKE) {
-        tls_handshake_t *handshake = (tls_handshake_t *)data;
-        // 计算握手数据长度
-        uint32_t handshake_data_length = handshake->length[0] << 16 | handshake->length[1] << 8 | handshake->length[2];
-        record->length = 1 + 3 + handshake_data_length;
-        // 拷贝握手数据
-        record->data = malloc(record->length);
-        record->data[0] = handshake->type;
-        memcpy(record->data + 1, handshake->length, 3);
-        memcpy(record->data + 4, handshake->data, handshake_data_length);
-        print_bytes(record->data, record->length);
-    }
-    printf("tls_record_create type: %02x, version: %02x, length: %02x\n", record->type, record->version, record->length);
-    return record;
-}
-
-int tls_server_hello_send(int client_sockfd, tls_server_hello_t *server_hello) {
-    size_t server_hello_length = sizeof(server_hello);
+int tls_server_hello_send(tls_context_t *context, tls_server_hello_t *server_hello) {
     tls_handshake_t *handshake = tls_handshake_create(TLS_HANDSHAKE_TYPE_SERVER_HELLO, (uint8_t *)server_hello);
     tls_record_t *record = tls_record_create(TLS_RECORD_CONTENT_TYPE_HANDSHAKE, TLS_PROTOCOL_VERSION_12, handshake);
-    return tls_record_send(client_sockfd, record);
+    return tls_record_send(context, record);
 }
 
-int tls_record_send(int client_sockfd, tls_record_t *record) {
-    size_t raw_record_length = record->length + 5;
-    uint8_t *raw_record = malloc(raw_record_length);
-    raw_record[0] = record->type;
-    raw_record[1] = record->version >> 8;
-    raw_record[2] = record->version & 0xff;
-    raw_record[3] = record->length >> 8;
-    raw_record[4] = record->length & 0xff;
-    memcpy(raw_record + 5, record->data, record->length);
-    print_bytes(raw_record, raw_record_length);
-    if (send(client_sockfd, raw_record, raw_record_length, 0) < 0) {  // 需要用strlen，sizeof返回的是指针大小，即char *
-        perror("send record failed.\n");
+
+/******************************************************************************
+ * ServerCertificate
+ *****************************************************************************/
+tls_server_certificate_t *tls_server_certificate_create(tls_context_t *context) {
+    tls_server_certificate_t *server_certificate = malloc(sizeof(tls_server_certificate_t));
+
+    tls_certificate_t *certificate = malloc(sizeof(tls_certificate_t));
+    FILE *cert_fp = fopen(context->cert_filepath, "r");
+    if (cert_fp == NULL) {
+        printf("tls_server_certificate_create open cert file error\n");
         exit(1);
     }
+    // 从pem格式文件读取证书
+    X509 *cert = PEM_read_X509(cert_fp, NULL, NULL, NULL);
+    context->cert = cert;
+    // 将x509证书转换为der格式
+    int cert_length = i2d_X509(cert, &certificate->certificate);
+    uint8_t *cert_length_ptr = (uint8_t *)&cert_length;
+    certificate->certificate_length[0] = cert_length_ptr[2];
+    certificate->certificate_length[1] = cert_length_ptr[1];
+    certificate->certificate_length[2] = cert_length_ptr[0];
+    printf("单个证书长度：%d\n", cert_length);
+    //print_bytes(certificate->certificate, certificate->certificate_length[0] << 16 | certificate->certificate_length[1] << 8 | certificate->certificate_length[2]);
+
+    // 计算所有证书长度和
+    uint32_t certificates_length = sizeof(certificate->certificate_length)
+                                   + (certificate->certificate_length[0] << 16 | certificate->certificate_length[1] << 8 | certificate->certificate_length[2]);
+    uint8_t *certificates_length_ptr = (uint8_t *)&certificates_length;
+    server_certificate->certificates_length[0] = certificates_length_ptr[2];
+    server_certificate->certificates_length[1] = certificates_length_ptr[1];
+    server_certificate->certificates_length[2] = certificates_length_ptr[0];
+
+
+    // 将证书复制到server_certificate
+    server_certificate->data = (uint8_t *)malloc(certificates_length);
+    uint8_t *data_ptr = server_certificate->data;
+    memcpy(data_ptr, certificate->certificate_length, sizeof(certificate->certificate_length));
+    data_ptr += sizeof(certificate->certificate_length);
+    memcpy(data_ptr, certificate->certificate, cert_length);
+
+    return server_certificate;
 }
 
+uint32_t tls_server_certificate_length(tls_server_certificate_t *server_certificate) {
+    uint32_t length = sizeof(server_certificate->certificates_length)
+            + (server_certificate->certificates_length[0] << 16 | server_certificate->certificates_length[1] << 8 | server_certificate->certificates_length[2]);
+    return length;
+}
+
+int tls_server_certificate_send(tls_context_t *context, tls_server_certificate_t *server_certificate) {
+    tls_handshake_t *handshake = tls_handshake_create(TLS_HANDSHAKE_TYPE_CERTIFICATE, (uint8_t *)server_certificate);
+    tls_record_t *record = tls_record_create(TLS_RECORD_CONTENT_TYPE_HANDSHAKE, TLS_PROTOCOL_VERSION_12, handshake);
+    return tls_record_send(context, record);
+}
+
+
+/******************************************************************************
+ * 其他
+ *****************************************************************************/
 void print_bytes(uint8_t *data, size_t len) {
     int i;
     for (i = 0; i < len; i++) {

@@ -70,7 +70,13 @@ C 语言实现简单的 HTTP 服务器。
     2. 发送cgi请求 `curl "http://localhost:8888/cgi-bin/student.py?name=Tom"` / `curl -H "Content-Type: application/json" -X POST -d '{"name":"John","age":18,"grade":"B"}' "http://localhost:8888/cgi-bin/student.py"`
 
 调试TLS协议
-1. `curl "https://localhost:8888/index.html" --trace -`
+1. `curl --insecure "https://localhost:8888/index.html" --trace -`（`--insecure`忽略自签名证书错误）
+2. wireshark抓本地包，选择Loopback: Io
+3. 二进制转16进制：`xxd file > file.hex`
+
+证书
+1. 生成自签名v3证书：`openssl req -newkey rsa:2048 -nodes -keyout key.pem -x509 -extensions v3_ca -days 3650 -out certificate.pem`（需要修改/etc/ssl/openssl.conf）
+2. 检查证书：`openssl x509 -text -noout -in certificate.pem`
 
 注意事项
 1. cgi脚本需要赋予执行权限 `chmod +x xxx.py`
@@ -149,6 +155,8 @@ FastCGI 的出现是为了解决 CGI fork-and-exec 模式的低效。TODO
 CGI脚本响应分为两类：NPH（Non-Parsed Header） 响应 和 CGI响应。
 NPH响应包含完整的HTTP响应，服务器必须确保脚本输出未经修改发送到客户端。
 CGI响应包括响应内容和一些响应头信息（如Content-Type），服务器接受后需要进一步处理。
+
+**10. TLS记录协议长度占2字节，而上层握手协议长度占3字节，握手协议数据实际长度会超过2个字节会怎样？**
 
 ## 参考
 - https://github.com/EZLippi/Tinyhttpd
