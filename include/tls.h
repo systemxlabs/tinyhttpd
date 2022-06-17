@@ -5,8 +5,18 @@
 #ifndef TINYHTTPD_TLS_H
 #define TINYHTTPD_TLS_H
 
+#include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <pthread.h>
+#include <arpa/inet.h>
+#include <stdbool.h>
+#include "openssl/rand.h"
 #include "openssl/x509v3.h"
+#include "openssl/pem.h"
 
 // TLS协议版本
 #define TLS_PROTOCOL_VERSION_10 0x0301
@@ -86,9 +96,9 @@ typedef struct {
 } tls_record_t;
 
 typedef struct {
-    uint8_t type;  // 握手类型, Client Hello = 0x01
+    uint8_t msg_type;  // 握手类型, Client Hello = 0x01
     uint8_t length[3];  // 握手长度 3个字节
-    uint8_t *data;  // 握手 data[length]
+    uint8_t *body;  // 握手 data[length]
 } tls_handshake_t;
 
 typedef struct {
@@ -151,6 +161,20 @@ typedef struct {
 } tls_server_certificate_t;
 
 typedef struct {
+} tls_server_hello_done_t;
+
+typedef struct {
+    uint16_t version;  // TLS版本
+    uint8_t random[2 * TLS_RANDOM_BYTES_LEN];  // 随机数
+} tls_pre_master_secret_t;
+
+typedef struct {
+    // TODO 还可能为ClientDiffieHellmanPublic
+    uint16_t encrypted_pre_master_secret_length;  // pre_master_secret加密后的长度
+    uint8_t *encrypted_pre_master_secret;  // pre_master_secret加密后的内容
+} tls_client_key_exchange_t;
+
+typedef struct {
     int client_sockfd; // 客户端套接字
     tls_random_t client_random;  // 客户端随机数
     tls_random_t server_random;  // 服务器随机数
@@ -161,9 +185,10 @@ typedef struct {
     uint8_t enc_key_length;  // 加密密钥长度
     uint8_t mac_key_length;  // MAC密钥长度
     uint8_t mac_length;  // MAC长度
-    char *cert_filepath;  // 证书文件路径
-    char *key_filepath;  // 密钥文件路径
+    char *pem_cert_filepath;  // 证书文件路径
+    char *pem_key_filepath;  // 私钥文件路径
     X509 *cert;  // X.509v3证书
+    tls_pre_master_secret_t pre_master_secret;  // pre_master_secret
 } tls_context_t;
 
 // socket相关包装函数
@@ -200,6 +225,19 @@ uint32_t tls_server_certificate_length(tls_server_certificate_t *server_certific
 void tls_server_certificate_free(tls_server_certificate_t *server_certificate);
 int tls_server_certificate_send(tls_context_t *context, tls_server_certificate_t *server_certificate);
 uint8_t *tls_server_certificate_files(tls_context_t *context, uint32_t *length);
+
+// ServerKeyExchange
+bool tls_server_key_exchange_needed(tls_context_t *context);
+
+// CertificateRequest
+bool tls_certificate_request_needed(tls_context_t *context);
+
+// ServerHelloDone
+tls_server_hello_done_t *tls_server_hello_done_create(tls_context_t *context);
+int tls_server_hello_done_send(tls_context_t *context, tls_server_hello_done_t *server_hello_done);
+
+// ClientKeyExchange
+tls_client_key_exchange_t *tls_client_key_exchange_parse(uint8_t *client_key_exchange_data);
 
 // 其他
 void print_bytes(uint8_t *data, size_t len);

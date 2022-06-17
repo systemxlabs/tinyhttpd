@@ -70,7 +70,7 @@ C 语言实现简单的 HTTP 服务器。
     2. 发送cgi请求 `curl "http://localhost:8888/cgi-bin/student.py?name=Tom"` / `curl -H "Content-Type: application/json" -X POST -d '{"name":"John","age":18,"grade":"B"}' "http://localhost:8888/cgi-bin/student.py"`
 
 调试TLS协议
-1. `curl --insecure "https://localhost:8888/index.html" --trace -`（`--insecure`忽略自签名证书错误）
+1. `curl --cacert cert/certificate.pem "https://localhost:8888/index.html" --trace -`（`--cacert`将自签名证书作为CA根证书验证）
 2. wireshark抓本地包，选择Loopback: Io
 3. 二进制转16进制：`xxd file > file.hex`
 
