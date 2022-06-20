@@ -20,6 +20,7 @@
 #include "openssl/crypto.h"
 #include "openssl/evp.h"
 #include "openssl/kdf.h"
+#include "openssl/hmac.h"
 
 // TLS协议版本
 #define TLS_PROTOCOL_VERSION_10 0x0301
@@ -48,9 +49,15 @@
 #define TLS_SESSION_ID_MAX_LEN 16
 
 // TLS随机数长度
-#define TLS_RANDOM_BYTES_LEN 28
+#define TLS_CLIENT_SERVER_RANDOM_LEN 32
+#define TLS_CLIENT_SERVER_RANDOM_BYTES_LEN 28
 // TLS pre master secret 随机数长度
-#define TLS_PRE_MASTER_RANDOM_BYTES_LEN 46
+#define TLS_PRE_MASTER_RANDOM_LEN 46
+#define TLS_PRE_MASTER_SECRET_LEN 48
+// TLS master secret
+#define TLS_MASTER_SECRET_LEN 48
+// TLS key block
+#define TLS_KEY_BLOCK_LEN 128
 
 // TLS密钥套件类型
 #define TLS_CIPHER_SUITE_TLS_ASE_128_GCM_SHA256 0x1301
@@ -134,7 +141,7 @@ typedef struct {
 
 typedef struct {
     uint32_t gmt_unix_time;  // 生成时间
-    uint8_t random_bytes[TLS_RANDOM_BYTES_LEN];  // 随机数
+    uint8_t random_bytes[TLS_CLIENT_SERVER_RANDOM_BYTES_LEN];  // 随机数
 } tls_random_t;
 
 typedef struct {
@@ -170,7 +177,7 @@ typedef struct {
 
 typedef struct {
     uint16_t version;  // TLS版本
-    uint8_t random[TLS_PRE_MASTER_RANDOM_BYTES_LEN];  // 随机数
+    uint8_t random[TLS_PRE_MASTER_RANDOM_LEN];  // 随机数
 } tls_pre_master_secret_t;
 
 typedef struct {
@@ -195,6 +202,8 @@ typedef struct {
     X509 *cert;  // X.509v3证书
     RSA *rsa_private_key;  // RSA私钥
     tls_pre_master_secret_t *pre_master_secret;  // pre_master_secret
+    uint8_t *master_secret;  // master_secret
+    uint8_t *key_block;
 } tls_context_t;
 
 // socket相关包装函数
@@ -215,12 +224,12 @@ tls_handshake_t *tls_handshake_create(uint8_t type, void *data);
 uint16_t tls_handshake_length(tls_handshake_t *handshake);
 
 // ClientHello
-tls_client_hello_t *tls_client_hello_parse(uint8_t *client_hello_data);
+tls_client_hello_t *tls_client_hello_parse(tls_context_t *context, uint8_t *client_hello_data);
 uint32_t tls_client_hello_length(tls_client_hello_t *client_hello);
 void tls_client_hello_free(tls_client_hello_t *client_hello);
 
 // ServerHello
-tls_server_hello_t *tls_server_hello_create(tls_client_hello_t *client_hello);
+tls_server_hello_t *tls_server_hello_create(tls_context_t *context, tls_client_hello_t *client_hello);
 uint32_t tls_server_hello_length(tls_server_hello_t *server_hello);
 void tls_server_hello_free(tls_server_hello_t *server_hello);
 int tls_server_hello_send(tls_context_t *context, tls_server_hello_t *server_hello);
@@ -251,6 +260,8 @@ void tls_client_key_exchange_decrypt(tls_context_t *context, tls_client_key_exch
 // 其他
 tls_context_t *tls_context_init();
 void tls_master_secret_compute(tls_context_t *context);
+void tls_key_block_compute(tls_context_t *context);
+bool tls_prf_sha256(const uint8_t *key, int keylen, const uint8_t *seed, int seedlen, uint8_t *pout, int outlen);
 void print_bytes(uint8_t *data, size_t len);
 
 #endif //TINYHTTPD_TLS_H

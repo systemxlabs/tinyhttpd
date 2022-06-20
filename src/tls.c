@@ -2,7 +2,6 @@
 // Created by Linwei Zhang on 2022/6/15.
 //
 
-#include <openssl/hmac.h>
 #include "tls.h"
 
 /******************************************************************************
@@ -107,10 +106,10 @@ int tls_handshake(tls_context_t *context) {
         tls_handshake_t *handshake = tls_handshake_parse(record->fragment);
         if (handshake->msg_type == TLS_HANDSHAKE_TYPE_CLIENT_HELLO) {
             // 解析握手协议ClientHello
-            tls_client_hello_t *client_hello = tls_client_hello_parse(handshake->body);
+            tls_client_hello_t *client_hello = tls_client_hello_parse(context, handshake->body);
 
             // 创建并发送ServerHello
-            tls_server_hello_t *server_hello = tls_server_hello_create(client_hello);
+            tls_server_hello_t *server_hello = tls_server_hello_create(context, client_hello);
             tls_server_hello_send(context, server_hello);
 
             // 更新context
@@ -155,6 +154,11 @@ int tls_handshake(tls_context_t *context) {
                     // print_bytes(client_key_exchange->encrypted_pre_master_secret, client_key_exchange->encrypted_pre_master_secret_length);
                     tls_client_key_exchange_decrypt(context, client_key_exchange);
 
+                    // 计算master_secret
+                    tls_master_secret_compute(context);
+
+                    // 计算key_block
+                    tls_key_block_compute(context);
                 }
             }
         }
@@ -199,8 +203,8 @@ tls_handshake_t *tls_handshake_create(uint8_t type, void *data) {
         body_ptr[2] = server_hello->random.gmt_unix_time >> 8;
         body_ptr[3] = server_hello->random.gmt_unix_time & 0xff;
         body_ptr += 4;
-        memcpy(body_ptr, server_hello->random.random_bytes, TLS_RANDOM_BYTES_LEN);
-        body_ptr += TLS_RANDOM_BYTES_LEN;
+        memcpy(body_ptr, server_hello->random.random_bytes, TLS_CLIENT_SERVER_RANDOM_BYTES_LEN);
+        body_ptr += TLS_CLIENT_SERVER_RANDOM_BYTES_LEN;
         body_ptr[0] = server_hello->session_id.session_id_length;
         body_ptr += 1;
         if (server_hello->session_id.session_id_length > 0) {
@@ -281,7 +285,7 @@ uint16_t tls_handshake_length(tls_handshake_t *handshake) {
 /******************************************************************************
  * ClientHello
  *****************************************************************************/
-tls_client_hello_t *tls_client_hello_parse(uint8_t *client_hello_data) {
+tls_client_hello_t *tls_client_hello_parse(tls_context_t *context, uint8_t *client_hello_data) {
     tls_client_hello_t *client_hello = malloc(sizeof(tls_client_hello_t));
 
     uint8_t pos = 0;
@@ -291,8 +295,10 @@ tls_client_hello_t *tls_client_hello_parse(uint8_t *client_hello_data) {
     // 解析随机数
     client_hello->random.gmt_unix_time = client_hello_data[pos] << 24 | client_hello_data[pos + 1] << 16 | client_hello_data[pos + 2] << 8 | client_hello_data[pos + 3];
     pos += 4;
-    memcpy(client_hello->random.random_bytes, client_hello_data + pos, TLS_RANDOM_BYTES_LEN);
-    pos += TLS_RANDOM_BYTES_LEN;
+    memcpy(client_hello->random.random_bytes, client_hello_data + pos, TLS_CLIENT_SERVER_RANDOM_BYTES_LEN);
+    pos += TLS_CLIENT_SERVER_RANDOM_BYTES_LEN;
+
+    context->client_random = client_hello->random;
 
     // 解析session id
     client_hello->session_id.session_id_length = client_hello_data[pos];
@@ -332,13 +338,15 @@ tls_client_hello_t *tls_client_hello_parse(uint8_t *client_hello_data) {
 /******************************************************************************
  * ServerHello
  *****************************************************************************/
-tls_server_hello_t *tls_server_hello_create(tls_client_hello_t *client_hello) {
+tls_server_hello_t *tls_server_hello_create(tls_context_t *context, tls_client_hello_t *client_hello) {
     tls_server_hello_t *server_hello = malloc(sizeof(tls_server_hello_t));
     server_hello->version = TLS_PROTOCOL_VERSION_12;
 
     // openssl生成随机数
     server_hello->random.gmt_unix_time = time(NULL);
-    RAND_bytes(server_hello->random.random_bytes, TLS_RANDOM_BYTES_LEN);
+    RAND_bytes(server_hello->random.random_bytes, TLS_CLIENT_SERVER_RANDOM_BYTES_LEN);
+
+    context->server_random = server_hello->random;
 
     // session id TODO 临时测试
     server_hello->session_id.session_id_length = 0;
@@ -503,10 +511,11 @@ void tls_client_key_exchange_decrypt(tls_context_t *context, tls_client_key_exch
     uint8_t *decrypted_pre_master_secret_ptr = decrypted_pre_master_secret;
     pre_master_secret->version = decrypted_pre_master_secret_ptr[0] << 8 | decrypted_pre_master_secret_ptr[1];
     decrypted_pre_master_secret_ptr += 2;
-    memcpy(pre_master_secret->random, decrypted_pre_master_secret_ptr, TLS_PRE_MASTER_RANDOM_BYTES_LEN);
+    memcpy(pre_master_secret->random, decrypted_pre_master_secret_ptr, TLS_PRE_MASTER_RANDOM_LEN);
 
     context->pre_master_secret = pre_master_secret;
 }
+
 
 /******************************************************************************
  * 其他
@@ -528,6 +537,45 @@ tls_context_t *tls_context_init() {
     return context;
 }
 
+void tls_master_secret_compute(tls_context_t *context) {
+    // 计算master_secret
+    uint8_t *pre_master_secret = (uint8_t *)context->pre_master_secret;
+    uint8_t *client_random = (uint8_t *)&context->client_random;
+    uint8_t *server_random = (uint8_t *)&context->server_random;
+
+    const char* label = "master secret";
+    int seed_len = strlen(label) + TLS_CLIENT_SERVER_RANDOM_LEN * 2;
+    unsigned char seed[seed_len];
+    memcpy(seed, label, strlen(label));
+    memcpy(&seed[strlen(label)], client_random, TLS_CLIENT_SERVER_RANDOM_LEN);
+    memcpy(&seed[strlen(label) + TLS_CLIENT_SERVER_RANDOM_LEN], server_random, TLS_CLIENT_SERVER_RANDOM_LEN);
+    uint8_t *master_secret = malloc(TLS_MASTER_SECRET_LEN);
+    tls_prf_sha256(pre_master_secret, TLS_PRE_MASTER_SECRET_LEN, seed, seed_len, master_secret, TLS_MASTER_SECRET_LEN);
+    context->master_secret = master_secret;
+
+    print_bytes(context->master_secret, TLS_MASTER_SECRET_LEN);
+}
+
+void tls_key_block_compute(tls_context_t *context) {
+    // 计算key_block
+    uint8_t *master_secret = context->master_secret;
+    uint8_t *client_random = (uint8_t *)&context->client_random;
+    uint8_t *server_random = (uint8_t *)&context->server_random;
+
+    const char* label = "key expansion";
+    int seed_len = strlen(label) + TLS_CLIENT_SERVER_RANDOM_LEN * 2;
+    unsigned char seed[seed_len];
+    memcpy(seed, label, strlen(label));
+    memcpy(&seed[strlen(label)], client_random, TLS_CLIENT_SERVER_RANDOM_LEN);
+    memcpy(&seed[strlen(label) + TLS_CLIENT_SERVER_RANDOM_LEN], server_random, TLS_CLIENT_SERVER_RANDOM_LEN);
+
+    uint8_t *key_block = malloc(TLS_KEY_BLOCK_LEN);
+    tls_prf_sha256(master_secret, TLS_MASTER_SECRET_LEN, seed, seed_len, key_block, TLS_KEY_BLOCK_LEN);
+    context->key_block = key_block;
+
+    print_bytes(context->key_block, TLS_KEY_BLOCK_LEN);
+}
+
 void print_bytes(uint8_t *data, size_t len) {
     int i;
     for (i = 0; i < len; i++) {
@@ -536,42 +584,67 @@ void print_bytes(uint8_t *data, size_t len) {
     printf("\n");
 }
 
-/*!
-计算RPF
-PRF(secret,label,seed) = P_sha256(secret,label + seed)
-\param key [in]  密数secret
-\param keylen [in]  密数secret的字节数
-\param seed [in] label+seed合并后的数据
-\param seedlen [in] label+seed合并后的数据字节数
-\param pout [out] 输出区
-\param outlen [in] 输出字节数,即需要扩展到的字节数。
+/**
+ * 计算RPF：PRF(secret,label,seed) = P_sha256(secret,label + seed)
+ * @param key [in]  密数secret，如pre_master_secret
+ * @param keylen [in]  密数secret的字节数
+ * @param seed [in] label+seed合并后的数据，如 "master secret" + client random + server random
+ * @param seedlen [in] label+seed合并后的数据字节数
+ * @param pout [out] 输出区
+ * @param outlen [in] 输出字节数,即需要扩展到的字节数。
+ *
+ * P_hash(secret, seed) =
+ * HMAC_hash(secret, A(1) + seed) +
+ * HMAC_hash(secret, A(2) + seed) +
+ * HMAC_hash(secret, A(3) + seed) + ...
+ * 其中+表示连接：
+ * A() is defined as:
+ * A(0) = seed
+ * A(i) = HMAC_hash(secret, A(i-1))
 */
-static bool prf_sha256(const unsigned char* key, int keylen, const unsigned char* seed, int seedlen,
-                       unsigned char *pout, int outlen) {
-//    int nout = 0;
-//    unsigned int mdlen = 0;
-//    unsigned char An[32], Aout[32], An_1[32];
-//    if (!HMAC(EVP_sha256(), key, (int)keylen, seed, seedlen, An_1, &mdlen))
-//        return false;
-//    ec::cAp as(32 + seedlen);
-//    unsigned char *ps = (unsigned char *)as;
-//    while (nout < outlen)
-//    {
-//        memcpy(ps, An_1, 32);
-//        memcpy(ps + 32, seed, seedlen);
-//        if (!HMAC(EVP_sha256(), key, (int)keylen, ps, 32 + seedlen, Aout, &mdlen))
-//            return false;
-//        if (nout + 32 < outlen) {
-//            memcpy(pout + nout, Aout, 32);
-//            nout += 32;
-//        } else {
-//            memcpy(pout + nout, Aout, outlen - nout);
-//            nout = outlen;
-//            break;
-//        }
-//        if (!HMAC(EVP_sha256(), key, (int)keylen, An_1, 32, An, &mdlen))
-//            return false;
-//        memcpy(An_1, An, 32);
-//    }
-//    return true;
+bool tls_prf_sha256(const uint8_t *key, int keylen, const uint8_t *seed, int seedlen, uint8_t *pout, int outlen) {
+    int nout = 0;  // 输出字节数
+    int hash_size = EVP_MD_size(EVP_sha256());  // 32
+
+    uint8_t An_1[hash_size];  // A(n-1) = HMAC_hash(secret, A(n-2))
+    uint8_t An[hash_size];  // A(n) = HMAC_hash(secret, A(n-1))
+
+    uint8_t Aout[hash_size];  // Aout = HMAC_hash(secret, A(i) + seed)
+    unsigned int mdlen = 0;  // mdlen是HMAC_hash的输出长度
+
+    // 计算A(1) = HMAC_hash(secret, A(0)), n = 2
+    if (!HMAC(EVP_sha256(), key, (int)keylen, seed, seedlen, An_1, &mdlen)) {
+        return false;
+    }
+
+    uint8_t *ps = malloc(seedlen + hash_size);
+
+    while (nout < outlen)
+    {
+        memcpy(ps, An_1, hash_size);  // 将A(n-1)复制到ps
+        memcpy(ps + hash_size, seed, seedlen);  // 将seed复制到ps
+
+        // 计算Aout = HMAC_hash(secret, A(n-1) + seed)
+        if (!HMAC(EVP_sha256(), key, (int)keylen, ps, hash_size + seedlen, Aout, &mdlen)) {
+            return false;
+        }
+
+        // 复制Aout到pout
+        if (nout + hash_size < outlen) {
+            memcpy(pout + nout, Aout, hash_size);
+            nout += 32;
+        } else {
+            memcpy(pout + nout, Aout, outlen - nout);
+            nout = outlen;
+            break;
+        }
+
+        // 计算A(n) = HMAC_hash(secret, A(n-1))
+        if (!HMAC(EVP_sha256(), key, (int)keylen, An_1, hash_size, An, &mdlen)) {
+            return false;
+        }
+        // 复制An到An_1
+        memcpy(An_1, An, hash_size);
+    }
+    return true;
 }
