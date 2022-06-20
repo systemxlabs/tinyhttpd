@@ -17,6 +17,9 @@
 #include "openssl/rand.h"
 #include "openssl/x509v3.h"
 #include "openssl/pem.h"
+#include "openssl/crypto.h"
+#include "openssl/evp.h"
+#include "openssl/kdf.h"
 
 // TLS协议版本
 #define TLS_PROTOCOL_VERSION_10 0x0301
@@ -46,6 +49,8 @@
 
 // TLS随机数长度
 #define TLS_RANDOM_BYTES_LEN 28
+// TLS pre master secret 随机数长度
+#define TLS_PRE_MASTER_RANDOM_BYTES_LEN 46
 
 // TLS密钥套件类型
 #define TLS_CIPHER_SUITE_TLS_ASE_128_GCM_SHA256 0x1301
@@ -165,7 +170,7 @@ typedef struct {
 
 typedef struct {
     uint16_t version;  // TLS版本
-    uint8_t random[2 * TLS_RANDOM_BYTES_LEN];  // 随机数
+    uint8_t random[TLS_PRE_MASTER_RANDOM_BYTES_LEN];  // 随机数
 } tls_pre_master_secret_t;
 
 typedef struct {
@@ -188,7 +193,8 @@ typedef struct {
     char *pem_cert_filepath;  // 证书文件路径
     char *pem_key_filepath;  // 私钥文件路径
     X509 *cert;  // X.509v3证书
-    tls_pre_master_secret_t pre_master_secret;  // pre_master_secret
+    RSA *rsa_private_key;  // RSA私钥
+    tls_pre_master_secret_t *pre_master_secret;  // pre_master_secret
 } tls_context_t;
 
 // socket相关包装函数
@@ -238,8 +244,13 @@ int tls_server_hello_done_send(tls_context_t *context, tls_server_hello_done_t *
 
 // ClientKeyExchange
 tls_client_key_exchange_t *tls_client_key_exchange_parse(uint8_t *client_key_exchange_data);
+uint32_t tls_client_key_exchange_length(tls_client_key_exchange_t *client_key_exchange);
+void tls_client_key_exchange_free(tls_client_key_exchange_t *client_key_exchange);
+void tls_client_key_exchange_decrypt(tls_context_t *context, tls_client_key_exchange_t *client_key_exchange);
 
 // 其他
+tls_context_t *tls_context_init();
+void tls_master_secret_compute(tls_context_t *context);
 void print_bytes(uint8_t *data, size_t len);
 
 #endif //TINYHTTPD_TLS_H
