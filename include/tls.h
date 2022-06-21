@@ -100,6 +100,9 @@
 // TLS压缩算法
 #define TLS_COMPRESSION_METHOD_NULL 0x00
 
+// TLS change cipher spec(1)
+#define TLS_CHANGE_CIPHER_SPEC_TYPE_1 0x01
+
 typedef struct {
     uint8_t type;  // 数据类型, Application Data = 0x17
     uint16_t version;  // TLS版本, TLS 1.2 = 0x0303
@@ -112,6 +115,10 @@ typedef struct {
     uint8_t length[3];  // 握手长度 3个字节
     uint8_t *body;  // 握手 data[length]
 } tls_handshake_t;
+
+typedef struct {
+    uint8_t type;
+} tls_change_cipher_spec_t;
 
 typedef struct {
     uint16_t type;  // 扩展类型
@@ -188,6 +195,8 @@ typedef struct {
 
 typedef struct {
     int client_sockfd; // 客户端套接字
+    uint8_t *record_buf; // 记录缓冲区
+    int record_buf_len; // 记录缓冲区长度
     tls_random_t client_random;  // 客户端随机数
     tls_random_t server_random;  // 服务器随机数
     tls_session_id_t session_id;  // 会话ID
@@ -204,6 +213,7 @@ typedef struct {
     tls_pre_master_secret_t *pre_master_secret;  // pre_master_secret
     uint8_t *master_secret;  // master_secret
     uint8_t *key_block;
+    uint8_t client_change_cipher_spec_type;  // 改变密钥标志
 } tls_context_t;
 
 // socket相关包装函数
@@ -212,7 +222,8 @@ char *tls_recv(int client_sockfd);
 int tls_send(int client_sockfd, char *msg);
 
 // 记录协议
-tls_record_t *tls_record_parse(uint8_t *record_data);
+int tls_record_read(tls_context_t *context);
+tls_record_t *tls_record_parse(tls_context_t *context);
 tls_record_t *tls_record_create(uint8_t type, uint16_t version, void *data);
 uint16_t tls_record_length(tls_record_t *record);
 int tls_record_send(tls_context_t *context, tls_record_t *record);
@@ -256,6 +267,13 @@ tls_client_key_exchange_t *tls_client_key_exchange_parse(uint8_t *client_key_exc
 uint32_t tls_client_key_exchange_length(tls_client_key_exchange_t *client_key_exchange);
 void tls_client_key_exchange_free(tls_client_key_exchange_t *client_key_exchange);
 void tls_client_key_exchange_decrypt(tls_context_t *context, tls_client_key_exchange_t *client_key_exchange);
+
+// TLS Change Cipher Spec协议
+tls_change_cipher_spec_t *tls_change_cipher_spec_parse(uint8_t *change_cipher_spec_data);
+uint32_t tls_change_cipher_spec_length(tls_change_cipher_spec_t *change_cipher_spec);
+void tls_change_cipher_spec_free(tls_change_cipher_spec_t *change_cipher_spec);
+tls_change_cipher_spec_t *tls_change_cipher_spec_create(uint8_t type);
+int tls_change_cipher_spec_send(tls_context_t *context, tls_change_cipher_spec_t *change_cipher_spec);
 
 // 其他
 tls_context_t *tls_context_init();

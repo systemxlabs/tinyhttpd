@@ -34,13 +34,43 @@ int tls_accept(int server_sockfd) {
 /******************************************************************************
  * tls记录协议
  *****************************************************************************/
-tls_record_t *tls_record_parse(uint8_t *record_data) {
+int tls_record_read(tls_context_t *context) {
+    uint8_t raw_record[1024];
+    int record_buf_len;
+    if ((record_buf_len = recv(context->client_sockfd, raw_record, sizeof(raw_record), 0)) < 0) {
+        perror("recv raw_record failed.\n");
+        exit(1);
+    }
+    if (context->record_buf != NULL) {
+        free(context->record_buf);
+        context->record_buf = NULL;
+        context->record_buf_len = 0;
+    }
+    context->record_buf = raw_record;
+    context->record_buf_len = record_buf_len;
+    print_bytes(context->record_buf, context->record_buf_len);
+}
+
+tls_record_t *tls_record_parse(tls_context_t *context) {
+    print_bytes(context->record_buf, context->record_buf_len);
     tls_record_t *record = (tls_record_t *)malloc(sizeof(tls_record_t));
-    record->type = record_data[0];
-    record->version = record_data[1] << 8 | record_data[2];
-    record->length = record_data[3] << 8 | record_data[4];
-    record->fragment = record_data + 5;
-    printf("tls_record_parse type: %d, version: %d, length: %d\n", record->type, record->version, record->length);
+    uint8_t *buf = context->record_buf;
+    record->type = buf[0];
+    record->version = buf[1] << 8 | buf[2];
+    record->length = buf[3] << 8 | buf[4];
+    record->fragment = malloc(record->length);
+    memcpy(record->fragment, buf + 5, record->length);
+
+    uint16_t record_len = tls_record_length(record);
+    context->record_buf_len -= record_len;
+    if (context->record_buf_len > 0) {
+        context->record_buf += record_len;
+    } else {
+        context->record_buf = NULL;
+    }
+
+    printf("tls_record_parse type: %02x, version: %02x, length: %02x\n", record->type, record->version, record->length);
+    print_bytes(context->record_buf, context->record_buf_len);
     return record;
 }
 
@@ -59,6 +89,12 @@ tls_record_t *tls_record_create(uint8_t type, uint16_t version, void *data) {
         uint32_t handshake_data_length = handshake->length[0] << 16 | handshake->length[1] << 8 | handshake->length[2];
         memcpy(record->fragment + 4, handshake->body, handshake_data_length);
         // print_bytes(record->data, record->length);
+    }
+    if (type == TLS_RECORD_CONTENT_TYPE_CHANGE_CIPHER_SPEC) {
+        tls_change_cipher_spec_t *change_cipher_spec = (tls_change_cipher_spec_t *)data;
+        record->length = tls_change_cipher_spec_length(change_cipher_spec);
+        record->fragment = malloc(record->length);
+        record->fragment[0] = change_cipher_spec->type;
     }
     printf("tls_record_create type: %02x, version: %02x, length: %02x\n", record->type, record->version, record->length);
     return record;
@@ -93,14 +129,9 @@ int tls_record_send(tls_context_t *context, tls_record_t *record) {
  * tls握手协议
  *****************************************************************************/
 int tls_handshake(tls_context_t *context) {
-    uint8_t raw_record[1024];
-    if (recv(context->client_sockfd, raw_record, sizeof(raw_record), 0) < 0) {
-        perror("recv raw_record failed.\n");
-        exit(1);
-    }
-    print_bytes(raw_record, sizeof(raw_record));
+    tls_record_read(context);
     // 解析记录协议
-    tls_record_t *record = tls_record_parse(raw_record);
+    tls_record_t *record = tls_record_parse(context);
     if (record->type == TLS_RECORD_CONTENT_TYPE_HANDSHAKE) {
         // 解析握手协议
         tls_handshake_t *handshake = tls_handshake_parse(record->fragment);
@@ -137,29 +168,65 @@ int tls_handshake(tls_context_t *context) {
             tls_server_hello_done_send(context, server_hello_done);
 
             // 读取客户端数据
-            uint8_t new_raw_record[1024];
-            if (recv(context->client_sockfd, raw_record, sizeof(raw_record), 0) < 0) {
-                perror("recv new_raw_record failed.\n");
-                exit(1);
+            if (context->record_buf_len <= 0) {
+                tls_record_read(context);
             }
-            // print_bytes(raw_record, sizeof(raw_record));
+
             // 解析记录协议
-            tls_record_t *new_record = tls_record_parse(raw_record);
+            tls_record_t *new_record = tls_record_parse(context);
+            print_bytes(context->record_buf, context->record_buf_len);
             if (new_record->type == TLS_RECORD_CONTENT_TYPE_HANDSHAKE) {
                 // 解析握手协议
                 tls_handshake_t *new_handshake = tls_handshake_parse(new_record->fragment);
+
                 if (new_handshake->msg_type == TLS_HANDSHAKE_TYPE_CLIENT_KEY_EXCHANGE) {
                     // 解析握手协议ClientKeyExchange
                     tls_client_key_exchange_t *client_key_exchange = tls_client_key_exchange_parse(new_handshake->body);
+
                     // print_bytes(client_key_exchange->encrypted_pre_master_secret, client_key_exchange->encrypted_pre_master_secret_length);
-                    tls_client_key_exchange_decrypt(context, client_key_exchange);
+//                    tls_client_key_exchange_decrypt(context, client_key_exchange);
 
                     // 计算master_secret
-                    tls_master_secret_compute(context);
+//                    tls_master_secret_compute(context);
 
                     // 计算key_block
-                    tls_key_block_compute(context);
+//                    tls_key_block_compute(context);
                 }
+            }
+
+            // 读取客户端数据
+            if (context->record_buf_len <= 0) {
+                tls_record_read(context);
+            }
+            tls_record_t *new_record2 = tls_record_parse(context);
+
+            if (new_record2->type == TLS_RECORD_CONTENT_TYPE_CHANGE_CIPHER_SPEC) {
+                // 解析ChangeCipherSpec
+                tls_change_cipher_spec_t *client_change_cipher_spec = tls_change_cipher_spec_parse(new_record2->fragment);
+                printf("change_cipher_spec: %02x\n", client_change_cipher_spec->type);
+                context->client_change_cipher_spec_type = client_change_cipher_spec->type;
+
+                // 发送ChangeCipherSpec
+                tls_change_cipher_spec_t *server_change_cipher_spec = tls_change_cipher_spec_create(TLS_CHANGE_CIPHER_SPEC_TYPE_1);
+                tls_change_cipher_spec_send(context, server_change_cipher_spec);
+            }
+
+            // 读取客户端数据
+            if (context->record_buf_len <= 0) {
+                tls_record_read(context);
+            }
+            tls_record_t *new_record3 = tls_record_parse(context);
+
+            if (new_record3->type == TLS_RECORD_CONTENT_TYPE_HANDSHAKE) {
+                // 解析握手协议
+                tls_handshake_t *new_handshake = tls_handshake_parse(new_record3->fragment);
+
+//                if (new_handshake->msg_type == TLS_HANDSHAKE_TYPE_FINISHED) {
+//                    // 解析握手协议Finished
+//                    tls_finished_t *finished = tls_finished_parse(new_handshake->body);
+//                    printf("finished: %02x\n", finished->verify_data_length);
+//                    printf("finished: %02x\n", finished->verify_data[0]);
+//                }
             }
         }
     }
@@ -501,10 +568,41 @@ tls_client_key_exchange_t *tls_client_key_exchange_parse(uint8_t *client_key_exc
 void tls_client_key_exchange_decrypt(tls_context_t *context, tls_client_key_exchange_t *client_key_exchange) {
     // 解密encrypted_pre_master_secret
     uint8_t *encrypted_pre_master_secret = client_key_exchange->encrypted_pre_master_secret;
-    uint8_t *decrypted_pre_master_secret = (uint8_t *)malloc(client_key_exchange->encrypted_pre_master_secret_length);
-    int pre_master_key_length = RSA_private_decrypt(client_key_exchange->encrypted_pre_master_secret_length, encrypted_pre_master_secret, decrypted_pre_master_secret, context->rsa_private_key, RSA_PKCS1_PADDING);
+    uint8_t *decrypted_pre_master_secret = (uint8_t *)malloc(TLS_PRE_MASTER_SECRET_LEN);
+    // print_bytes(context->record_buf, context->record_buf_len);
+    // 读取私钥
+//    FILE *key_fp = fopen(context->pem_key_filepath, "r");
+//    if (key_fp == NULL) {
+//        printf("tls_client_key_exchange_decrypt open key file error\n");
+//        exit(1);
+//    }
+//    RSA *rsa_private_key = PEM_read_RSAPrivateKey(key_fp, NULL, NULL, NULL);
+//    print_bytes(context->record_buf, context->record_buf_len);
+//    int len = RSA_private_decrypt(client_key_exchange->encrypted_pre_master_secret_length,
+//                        encrypted_pre_master_secret,
+//                        decrypted_pre_master_secret,
+//                        rsa_private_key,
+//                        RSA_PKCS1_OAEP_PADDING);
+//    if (len < 0) {
+//        printf("tls_client_key_exchange_decrypt RSA_private_decrypt error\n");
+//        exit(1);
+//    }
+//    printf("pre master len: %d\n", len);
     // print_bytes(client_key_exchange->encrypted_pre_master_secret, client_key_exchange->encrypted_pre_master_secret_length);
     // print_bytes(decrypted_pre_master_secret, length);
+
+//    EVP_PKEY_CTX *ctx;
+//    unsigned char *out, *in;
+//    size_t outlen, inlen;
+//    EVP_PKEY *key;
+//    ctx = EVP_PKEY_CTX_new(key, NULL);
+//
+//    if (EVP_PKEY_decrypt(ctx, out, &outlen, in, inlen) <= 0) {
+//        printf("EVP_PKEY_decrypt error\n");
+//        exit(1);
+//    }
+
+    //print_bytes(context->record_buf, context->record_buf_len);
 
     // 解析解密后的pre_master_secret
     tls_pre_master_secret_t *pre_master_secret = malloc(sizeof(tls_pre_master_secret_t));
@@ -514,6 +612,31 @@ void tls_client_key_exchange_decrypt(tls_context_t *context, tls_client_key_exch
     memcpy(pre_master_secret->random, decrypted_pre_master_secret_ptr, TLS_PRE_MASTER_RANDOM_LEN);
 
     context->pre_master_secret = pre_master_secret;
+}
+
+
+/******************************************************************************
+ * TLS Change Cipher Spec协议
+ *****************************************************************************/
+tls_change_cipher_spec_t *tls_change_cipher_spec_parse(uint8_t *change_cipher_spec_data) {
+    tls_change_cipher_spec_t *change_cipher_spec = (tls_change_cipher_spec_t *)malloc(sizeof(tls_change_cipher_spec_t));
+    change_cipher_spec->type = change_cipher_spec_data[0];
+    return change_cipher_spec;
+}
+
+tls_change_cipher_spec_t *tls_change_cipher_spec_create(uint8_t type) {
+    tls_change_cipher_spec_t *change_cipher_spec = (tls_change_cipher_spec_t *)malloc(sizeof(tls_change_cipher_spec_t));
+    change_cipher_spec->type = type;
+    return change_cipher_spec;
+}
+
+uint32_t tls_change_cipher_spec_length(tls_change_cipher_spec_t *change_cipher_spec) {
+    return sizeof(change_cipher_spec->type);
+}
+
+int tls_change_cipher_spec_send(tls_context_t *context, tls_change_cipher_spec_t *change_cipher_spec) {
+    tls_record_t *record = tls_record_create(TLS_RECORD_CONTENT_TYPE_CHANGE_CIPHER_SPEC, TLS_PROTOCOL_VERSION_12, change_cipher_spec);
+    return tls_record_send(context, record);
 }
 
 
@@ -550,10 +673,12 @@ void tls_master_secret_compute(tls_context_t *context) {
     memcpy(&seed[strlen(label)], client_random, TLS_CLIENT_SERVER_RANDOM_LEN);
     memcpy(&seed[strlen(label) + TLS_CLIENT_SERVER_RANDOM_LEN], server_random, TLS_CLIENT_SERVER_RANDOM_LEN);
     uint8_t *master_secret = malloc(TLS_MASTER_SECRET_LEN);
+    print_bytes(context->record_buf, context->record_buf_len);
     tls_prf_sha256(pre_master_secret, TLS_PRE_MASTER_SECRET_LEN, seed, seed_len, master_secret, TLS_MASTER_SECRET_LEN);
+    print_bytes(context->record_buf, context->record_buf_len);
     context->master_secret = master_secret;
 
-    print_bytes(context->master_secret, TLS_MASTER_SECRET_LEN);
+    //print_bytes(context->master_secret, TLS_MASTER_SECRET_LEN);
 }
 
 void tls_key_block_compute(tls_context_t *context) {
@@ -573,7 +698,7 @@ void tls_key_block_compute(tls_context_t *context) {
     tls_prf_sha256(master_secret, TLS_MASTER_SECRET_LEN, seed, seed_len, key_block, TLS_KEY_BLOCK_LEN);
     context->key_block = key_block;
 
-    print_bytes(context->key_block, TLS_KEY_BLOCK_LEN);
+    //print_bytes(context->key_block, TLS_KEY_BLOCK_LEN);
 }
 
 void print_bytes(uint8_t *data, size_t len) {
