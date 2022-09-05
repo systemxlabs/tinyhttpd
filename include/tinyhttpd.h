@@ -67,6 +67,8 @@ void send_response(int client_sockfd, struct http_response_t *response);
 /****************************
  * request.c
  ***************************/
+// 读取原始请求 TODO
+char *read_request(int client_sockfd);
 // 解析请求
 struct http_request_t *parse_request(char *raw_request);
 // 验证请求

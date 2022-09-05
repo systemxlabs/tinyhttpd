@@ -2,6 +2,7 @@
 // Created by Linwei Zhang on 2022/6/15.
 //
 
+#include <assert.h>
 #include "tls.h"
 
 /******************************************************************************
@@ -174,7 +175,6 @@ int tls_handshake(tls_context_t *context) {
 
             // 解析记录协议
             tls_record_t *new_record = tls_record_parse(context);
-            print_bytes(context->record_buf, context->record_buf_len);
             if (new_record->type == TLS_RECORD_CONTENT_TYPE_HANDSHAKE) {
                 // 解析握手协议
                 tls_handshake_t *new_handshake = tls_handshake_parse(new_record->fragment);
@@ -184,7 +184,7 @@ int tls_handshake(tls_context_t *context) {
                     tls_client_key_exchange_t *client_key_exchange = tls_client_key_exchange_parse(new_handshake->body);
 
                     // print_bytes(client_key_exchange->encrypted_pre_master_secret, client_key_exchange->encrypted_pre_master_secret_length);
-//                    tls_client_key_exchange_decrypt(context, client_key_exchange);
+                    tls_client_key_exchange_decrypt(context, client_key_exchange);
 
                     // 计算master_secret
 //                    tls_master_secret_compute(context);
@@ -465,7 +465,7 @@ tls_server_certificate_t *tls_server_certificate_create(tls_context_t *context) 
     }
     // 从pem格式文件读取证书
     X509 *cert = PEM_read_X509(cert_fp, NULL, NULL, NULL);
-    context->cert = cert;
+//    context->cert = cert;
     // 将x509证书转换为der格式
     int cert_length = i2d_X509(cert, &certificate->certificate);
     uint8_t *cert_length_ptr = (uint8_t *)&cert_length;
@@ -569,25 +569,37 @@ void tls_client_key_exchange_decrypt(tls_context_t *context, tls_client_key_exch
     // 解密encrypted_pre_master_secret
     uint8_t *encrypted_pre_master_secret = client_key_exchange->encrypted_pre_master_secret;
     uint8_t *decrypted_pre_master_secret = (uint8_t *)malloc(TLS_PRE_MASTER_SECRET_LEN);
-    // print_bytes(context->record_buf, context->record_buf_len);
+
     // 读取私钥
-//    FILE *key_fp = fopen(context->pem_key_filepath, "r");
-//    if (key_fp == NULL) {
-//        printf("tls_client_key_exchange_decrypt open key file error\n");
-//        exit(1);
-//    }
-//    RSA *rsa_private_key = PEM_read_RSAPrivateKey(key_fp, NULL, NULL, NULL);
-//    print_bytes(context->record_buf, context->record_buf_len);
-//    int len = RSA_private_decrypt(client_key_exchange->encrypted_pre_master_secret_length,
-//                        encrypted_pre_master_secret,
-//                        decrypted_pre_master_secret,
-//                        rsa_private_key,
-//                        RSA_PKCS1_OAEP_PADDING);
-//    if (len < 0) {
-//        printf("tls_client_key_exchange_decrypt RSA_private_decrypt error\n");
-//        exit(1);
-//    }
-//    printf("pre master len: %d\n", len);
+    FILE *key_fp = fopen(context->pem_key_filepath, "r");
+    if (key_fp == NULL) {
+        printf("tls_client_key_exchange_decrypt open key file error\n");
+        exit(1);
+    }
+    RSA *rsa_private_key = PEM_read_RSAPrivateKey(key_fp, NULL, NULL, NULL);
+    check_errors();
+
+    print_bytes(context->record_buf, context->record_buf_len);
+
+    int len = RSA_private_decrypt(client_key_exchange->encrypted_pre_master_secret_length,
+                        encrypted_pre_master_secret,
+                        decrypted_pre_master_secret,
+                        rsa_private_key,
+                        RSA_NO_PADDING);
+    RSA_free(rsa_private_key);
+    OPENSSL_thread_stop();
+    CRYPTO_cleanup_all_ex_data();
+
+    print_bytes(context->record_buf, context->record_buf_len);
+
+    check_errors();
+    if (len < 0) {
+        printf("tls_client_key_exchange_decrypt RSA_private_decrypt error, encrypted_pre_master_secret_length: %d\n",
+               client_key_exchange->encrypted_pre_master_secret_length);
+        printf(ERR_error_string(ERR_get_error(), NULL));
+        exit(1);
+    }
+    printf("pre master len: %d\n", len);
     // print_bytes(client_key_exchange->encrypted_pre_master_secret, client_key_exchange->encrypted_pre_master_secret_length);
     // print_bytes(decrypted_pre_master_secret, length);
 
@@ -649,14 +661,14 @@ tls_context_t *tls_context_init() {
     context->pem_cert_filepath = "/Users/lewis/Github/tinyhttpd/cert/certificate.pem";
     context->pem_key_filepath = "/Users/lewis/Github/tinyhttpd/cert/key.pem";
     // 读取私钥
-    FILE *key_fp = fopen(context->pem_key_filepath, "r");
-    if (key_fp == NULL) {
-        printf("tls_context_init open key file error\n");
-        exit(1);
-    }
-    RSA *rsa_private_key =  PEM_read_RSAPrivateKey(key_fp, NULL, NULL, NULL);
-    context->rsa_private_key = rsa_private_key;
-    fclose(key_fp);
+//    FILE *key_fp = fopen(context->pem_key_filepath, "r");
+//    if (key_fp == NULL) {
+//        printf("tls_context_init open key file error\n");
+//        exit(1);
+//    }
+//    RSA *rsa_private_key =  PEM_read_RSAPrivateKey(key_fp, NULL, NULL, NULL);
+//    context->rsa_private_key = rsa_private_key;
+//    fclose(key_fp);
     return context;
 }
 
@@ -673,9 +685,7 @@ void tls_master_secret_compute(tls_context_t *context) {
     memcpy(&seed[strlen(label)], client_random, TLS_CLIENT_SERVER_RANDOM_LEN);
     memcpy(&seed[strlen(label) + TLS_CLIENT_SERVER_RANDOM_LEN], server_random, TLS_CLIENT_SERVER_RANDOM_LEN);
     uint8_t *master_secret = malloc(TLS_MASTER_SECRET_LEN);
-    print_bytes(context->record_buf, context->record_buf_len);
     tls_prf_sha256(pre_master_secret, TLS_PRE_MASTER_SECRET_LEN, seed, seed_len, master_secret, TLS_MASTER_SECRET_LEN);
-    print_bytes(context->record_buf, context->record_buf_len);
     context->master_secret = master_secret;
 
     //print_bytes(context->master_secret, TLS_MASTER_SECRET_LEN);
@@ -772,4 +782,12 @@ bool tls_prf_sha256(const uint8_t *key, int keylen, const uint8_t *seed, int see
         memcpy(An_1, An, hash_size);
     }
     return true;
+}
+
+void check_errors() {
+    const int error = ERR_get_error();
+    if ( error != 0 ) {
+        printf("check error failed, reason: %s\n", ERR_reason_error_string( error ));
+        assert(0);
+    }
 }

@@ -4,6 +4,18 @@
 
 #include "tinyhttpd.h"
 
+char *read_request(int client_sockfd) {
+    char raw_request[1024];
+    ssize_t recv_len;
+    // 读取客户端请求
+    // TODO 循环读取完整请求
+    if ((recv_len = recv(client_sockfd, raw_request, sizeof(raw_request), 0)) < 0) {
+        perror("recv raw_request failed.\n");
+        exit(1);
+    }
+    return strdup(raw_request);
+}
+
 struct http_request_t *parse_request(char *raw_request) {
     struct http_request_t *request = (struct http_request_t *) malloc(sizeof(struct http_request_t));
     memset(request, 0, sizeof(struct http_request_t));

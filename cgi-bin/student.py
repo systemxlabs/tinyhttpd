@@ -13,6 +13,7 @@ def create_student_in_db(name, age, grade):
     return {"name": name, "age": age, "grade": grade}
 
 
+# 从环境变量读取http请求头部信息
 query_string = os.getenv("QUERY_STRING")
 method = os.getenv("REQUEST_METHOD")
 content_type = os.getenv("CONTENT_TYPE")
@@ -23,14 +24,18 @@ if method == "GET":
         key_value = pair.split("=")
         if key_value[0] == "name":
             name = key_value[1]
+            # 将响应内容写入到标准输出流中
             print("HTTP/1.1 200 OK", end="\r\n")
             print("Content-Type: text/html; charset=utf-8", end="\r\n")
-            content = "<html><body>" + "<p>Got the student: %s</p>" % get_student_from_db(name) + "</body></html>"
+            content = "<html><body>" + \
+                      "<p>Got the student: %s</p>" % get_student_from_db(name) + \
+                      "</body></html>"
             print("Content-Length: %d" % len(bytes(content, encoding="utf-8")), end="\r\n")
             print("", end="\r\n")  # 空行
             print(content, end="")
 
 elif method == "POST":
+    # 从标准输入流中读取请求body
     # TODO 读取 Content-Length长度字节内容
     body = input()
     name = ""

@@ -21,6 +21,7 @@
 #include "openssl/evp.h"
 #include "openssl/kdf.h"
 #include "openssl/hmac.h"
+#include "openssl/err.h"
 
 // TLS协议版本
 #define TLS_PROTOCOL_VERSION_10 0x0301
@@ -195,8 +196,6 @@ typedef struct {
 
 typedef struct {
     int client_sockfd; // 客户端套接字
-    uint8_t *record_buf; // 记录缓冲区
-    int record_buf_len; // 记录缓冲区长度
     tls_random_t client_random;  // 客户端随机数
     tls_random_t server_random;  // 服务器随机数
     tls_session_id_t session_id;  // 会话ID
@@ -208,12 +207,14 @@ typedef struct {
     uint8_t mac_length;  // MAC长度
     char *pem_cert_filepath;  // 证书文件路径
     char *pem_key_filepath;  // 私钥文件路径
-    X509 *cert;  // X.509v3证书
-    RSA *rsa_private_key;  // RSA私钥
+//    X509 *cert;  // X.509v3证书
+//    RSA *rsa_private_key;  // RSA私钥
     tls_pre_master_secret_t *pre_master_secret;  // pre_master_secret
     uint8_t *master_secret;  // master_secret
     uint8_t *key_block;
     uint8_t client_change_cipher_spec_type;  // 改变密钥标志
+    uint8_t *record_buf; // 记录缓冲区
+    int record_buf_len; // 记录缓冲区长度
 } tls_context_t;
 
 // socket相关包装函数
@@ -268,7 +269,7 @@ uint32_t tls_client_key_exchange_length(tls_client_key_exchange_t *client_key_ex
 void tls_client_key_exchange_free(tls_client_key_exchange_t *client_key_exchange);
 void tls_client_key_exchange_decrypt(tls_context_t *context, tls_client_key_exchange_t *client_key_exchange);
 
-// TLS Change Cipher Spec协议
+// Change Cipher Spec协议
 tls_change_cipher_spec_t *tls_change_cipher_spec_parse(uint8_t *change_cipher_spec_data);
 uint32_t tls_change_cipher_spec_length(tls_change_cipher_spec_t *change_cipher_spec);
 void tls_change_cipher_spec_free(tls_change_cipher_spec_t *change_cipher_spec);
@@ -281,5 +282,6 @@ void tls_master_secret_compute(tls_context_t *context);
 void tls_key_block_compute(tls_context_t *context);
 bool tls_prf_sha256(const uint8_t *key, int keylen, const uint8_t *seed, int seedlen, uint8_t *pout, int outlen);
 void print_bytes(uint8_t *data, size_t len);
+void check_errors();
 
 #endif //TINYHTTPD_TLS_H

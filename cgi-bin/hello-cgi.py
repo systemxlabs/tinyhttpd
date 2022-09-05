@@ -6,7 +6,6 @@ import cgi, cgitb, os
 cgitb.enable()  # 开启调试模式
 
 print("Content-Type: text/html\n")
-print('Set-Cookie: name="";expires=Wed, 28 Aug 2016 18:30:00 GMT')
 print("<!doctype html>"
       "<title>Hello</title>"
       "<h2>Hello CGI!</h2>"
@@ -16,5 +15,5 @@ print("<!doctype html>"
 print("<b>env variables</b><br>")
 print("<ul>")
 for key in os.environ.keys():
-    print("<li><span style='color:green'>%30s </span> : %s </li>" % (key,os.environ[key]))
+    print("<li><span style='color:green'>%30s </span> : %s </li>" % (key, os.environ[key]))
 print("</ul>")

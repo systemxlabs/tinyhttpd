@@ -78,7 +78,6 @@ struct http_response_t *execute_cgi_python(struct http_request_t *request) {
         wait(&rv);  // 等待子进程结束，返回子进程的退出状态
 
         // 读取CGI脚本的输出
-        // TODO 优化读取
         if ( (n = read(child_parent_pipe[0], raw_response, MAXLINE)) < 0) {
             printf("Error reading from CGI script.\n");
             return build_response_500();
@@ -91,5 +90,6 @@ struct http_response_t *execute_cgi_python(struct http_request_t *request) {
 
         return build_raw_response(raw_response);
     }
+    // TODO 优化读取
     return build_response_500();
 }
